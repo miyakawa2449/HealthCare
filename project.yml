@@ -1,0 +1,63 @@
+name: WeightApp
+options:
+  bundleIdPrefix: com.miyakawa
+  deploymentTarget:
+    iOS: "26.0"
+  developmentLanguage: ja
+  xcodeVersion: "27.1"
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    DEVELOPMENT_TEAM: VC9862P72J
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1"
+    SUPPORTED_INTERFACE_ORIENTATIONS: UIInterfaceOrientationPortrait
+
+packages:
+  WeightCore:
+    path: WeightCore
+
+targets:
+  WeightApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: WeightApp
+    dependencies:
+      - package: WeightCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.miyakawa.weightapp
+        INFOPLIST_FILE: WeightApp/Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: WeightApp/WeightApp.entitlements
+
+  WeightAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: WeightAppTests
+    dependencies:
+      - target: WeightApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.miyakawa.weightapp.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  WeightApp:
+    build:
+      targets:
+        WeightApp: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - WeightAppTests
+        - package: WeightCore/WeightCoreTests
