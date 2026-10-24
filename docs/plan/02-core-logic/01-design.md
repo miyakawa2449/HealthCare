@@ -44,13 +44,15 @@ public enum DailyWeightResolver {
 ## 2. 7日平均: `SevenDayAverage`
 
 ```swift
-public enum SevenDayAverage {
-    public static func value(endingOn day: CalendarDay, in weights: [DailyWeight]) -> Double?
+public struct SevenDayAverage: Sendable, Equatable {
+    public var kilograms: Double
+    public var daysUsed: Int     // 平均に使った日数(1〜7)
+    public init?(endingOn day: CalendarDay, in weights: [DailyWeight])
 }
 ```
 
-- `day` を含む直近7日(`day - 6` 〜 `day`)にある `DailyWeight` の単純平均。
-- 窓の中に1件もなければ `nil`。件数の下限は設けない(03-decisions.md #2)。
+- `day` を含む直近7日(`day - 6` 〜 `day`)にある `DailyWeight` の単純平均。平均に使った日数も返す。
+- 窓の中に1件もなければ `nil`。件数の下限は設けない(03-decisions.md #2。下限は実機で使ってから決める)。
 - 丸めない(表示側で丸める)。
 
 ## 3. 目安と進み具合: `Guideline`、`ProgressJudgment`
@@ -113,7 +115,7 @@ public struct Roadmap: Sendable, Equatable, Codable {
 - `startWeight <= targetWeight` のときは `stages` が空(計画を作れない)。
 - 到達予定日: ステージ k の減量日数 = `ceil(ln(boundary_k / boundary_{k−1}) / ln(1 − monthlyRate) × daysPerMonth)`。ステージ 2 以降は、前のステージの維持期間として `settings.assumedMaintenanceDays` を足す(03-decisions.md #1)。最終ステージの後には足さない。
 - 到達判定: `Weight.rounded(sevenDayAverage) <= boundaryWeight`。
-- `PlanSettings` に `assumedMaintenanceDays` を追加する。
+- `PlanSettings` に `assumedMaintenanceDays = 60` を追加する。テストもこの定数を参照する(03-decisions.md #1)。
 
 ## 6. 実績ペース: `ActualPace`
 
@@ -126,8 +128,11 @@ public enum ActualPace {
 ```
 
 - `now = SevenDayAverage(day)`、`then = SevenDayAverage(day − actualPaceWindowDays)`。どちらかが `nil` なら `nil`。
-- `monthlyRate = 1 − (now / then)^(daysPerMonth / actualPaceWindowDays)`(03-decisions.md #4)。
+- 窓の始まりは `max(経過日数 − actualPaceWindowDays, actualPaceWindowStartFloor)`。`actualPaceWindowStartFloor = 13`(14日目 = 経過13日)で、初期の水分減少を窓に含めない(03-decisions.md #5)。窓の日数 n は 31日目で 17、42日目で 28 になる。
+- 開始から `initialPeriodDays`(30)未満は `nil`(最初の1か月は判定しない)。
+- `monthlyRate = Pace.monthlyRate(ratio: now / then, overDays: n)` = `1 − (now / then)^(daysPerMonth / n)`(03-decisions.md #4)。戻り値は `monthlyRate` と `windowDays` を持つ構造体。
 - `isTooFast = Ratio.rounded(monthlyRate) > fastPaceMonthlyLimit`。ちょうど3%は速すぎではない。
+- **`Pace`**: 「月」の定義を1か所にまとめる型。`Guideline` の日割りと `ActualPace` の月換算は互いに逆関数になる(`Guideline` で28日後の目安を出し、その比を `Pace.monthlyRate` に通すと `monthlyRate` に戻る)。これをテストで確認する。
 
 ## 7. 維持期間: `MaintenanceJudgment`
 
@@ -161,6 +166,9 @@ public enum PlanReviewTrigger {
 - 14日すべてがずれていたら `true`。7日平均が `nil` の日があれば `false`(判断できない)。上下どちらのずれも対象(03-decisions.md #6)。
 - 見直しを「採用したあとの再起点」は `Roadmap` を新しい `startWeight` / `startDay` で作り直し、`stages` の境界だけ元の値を引き継ぐ初期化子 `Roadmap(rebasing: old, startWeight:, startDay:)` で表す。
 
-## 9. 最初の1か月
+## 9. 最初の1か月(案A)
 
-03-decisions.md #5 の回答後に設計を確定する。いずれの案でも `PlanSettings.initialPeriodDays = 30` を追加する。
+- `PlanSettings.initialPeriodDays = 30` を追加。経過日数が 30 未満(1〜30日目)は「最初の1か月」。
+- `ProgressJudgment` に `.settlingIn` を追加し、`judge(sevenDayAverage:guideline:daysElapsed:settings:)` は経過日数が `initialPeriodDays` 未満ならこれを返す。
+- `PlanReviewTrigger` は窓の14日すべてが経過30日以降でなければ `false`(最短で44日目に発動)。
+- `ActualPace` は経過30日未満で `nil`、窓の始まりは経過13日(14日目)より前にしない(上記 6)。
