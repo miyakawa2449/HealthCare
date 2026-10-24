@@ -1,7 +1,7 @@
 # WeightApp(仮称)
 
 個人用の体重管理 iOS アプリ。「見せすぎないことで継続させる」を目的にする。
-仕様は `docs/concept.md`、開発ルールは `AGENTS.md` と `CLAUDE.md`、フェーズごとの計画は `docs/plan/` にある。
+仕様は `docs/concept.md`、開発ルールは `AGENTS.md` と `CLAUDE.md`、フェーズごとの計画は `docs/plan/` にある(全体像は `docs/plan/README.md`)。
 
 ## 構成
 
