@@ -36,23 +36,30 @@ public struct Roadmap: Sendable, Equatable, Codable {
 
     // MARK: フェーズの遷移
 
-    /// 最初のフェーズ: ステージ1の減量中。起点は計画の開始体重と開始日。
-    public var initialPhase: PlanPhase {
-        .losing(stage: 1, origin: StageOrigin(weight: startWeight, day: startDay))
+    /// 最初のフェーズ: ステージ1の減量中。起点は計画の開始体重と開始日。ステージがなければ nil。
+    public var initialPhase: PlanPhase? {
+        guard !stages.isEmpty else { return nil }
+        return .losing(stage: 1, origin: StageOrigin(weight: startWeight, day: startDay))
     }
 
     /// ステージに到達した日のフェーズ。最終ステージなら維持モード、それ以外は維持期間。
-    public func phaseOnArrival(stage: Int, sevenDayAverage: Double, on day: CalendarDay) -> PlanPhase {
+    /// `stage` が 1...ステージ数 の外なら nil。
+    public func phaseOnArrival(stage: Int, sevenDayAverage: Double, on day: CalendarDay) -> PlanPhase? {
+        guard isValid(stage: stage) else { return nil }
         let arrival = StageOrigin(weight: sevenDayAverage, day: day)
-        return stage >= stages.count ? .maintenanceMode(arrival: arrival) : .maintaining(stage: stage, arrival: arrival)
+        return stage == stages.count ? .maintenanceMode(arrival: arrival) : .maintaining(stage: stage, arrival: arrival)
     }
 
     /// 維持期間から次のステージへ進んだ日のフェーズ。その日の7日平均(丸め)と日付が次のステージの起点になる。
-    /// 維持期間中でなければ nil。
+    /// 維持期間中でない、またはステージ番号が範囲外なら nil。
     public func phaseOnAdvance(from phase: PlanPhase, sevenDayAverage: Double, on day: CalendarDay) -> PlanPhase? {
-        guard case .maintaining(let stage, let arrival) = phase else { return nil }
+        guard case .maintaining(let stage, let arrival) = phase, isValid(stage: stage) else { return nil }
         guard stage < stages.count else { return .maintenanceMode(arrival: arrival) }
         return .losing(stage: stage + 1, origin: StageOrigin(weight: sevenDayAverage, day: day))
+    }
+
+    private func isValid(stage: Int) -> Bool {
+        (1...max(stages.count, 1)).contains(stage) && !stages.isEmpty
     }
 
     /// 到達予定日をフェーズから計算し直す。境界は変えない。
@@ -63,11 +70,11 @@ public struct Roadmap: Sendable, Equatable, Codable {
         var result = self
         switch phase {
         case .losing(let stage, let origin):
-            guard stage >= 1, stage <= stages.count else { return result }
+            guard isValid(stage: stage) else { return result }
             let remaining = Self.scheduled(Array(stages[(stage - 1)...]), from: origin.weight, on: origin.day, settings: settings)
             result.stages.replaceSubrange((stage - 1)..., with: remaining)
         case .maintaining(let stage, let arrival):
-            guard stage >= 1, stage <= stages.count else { return result }
+            guard isValid(stage: stage) else { return result }
             result.stages[stage - 1].estimatedArrival = arrival.day
             if stage < stages.count {
                 let next = Self.scheduled(Array(stages[stage...]), from: arrival.weight, on: arrival.day.adding(days: settings.assumedMaintenanceDays), settings: settings, maintenanceBeforeFirst: false)

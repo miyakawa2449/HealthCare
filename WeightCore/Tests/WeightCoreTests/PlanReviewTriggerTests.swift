@@ -4,6 +4,7 @@ import Testing
 struct PlanReviewTriggerTests {
     let s = PlanSettings.default
     let start = day(2026, 10, 18)
+    var roadmap: Roadmap { Roadmap(startWeight: 123.5, startDay: day(2026, 10, 18), targetWeight: 67.4, settings: .default) }
     var stage1: PlanPhase { .losing(stage: 1, origin: StageOrigin(weight: 123.5, day: start)) }
 
     /// 窓 11-17〜11-30(経過30〜43日)。
@@ -20,7 +21,7 @@ struct PlanReviewTriggerTests {
     }
 
     func propose(_ phase: PlanPhase, through: CalendarDay, _ w: [DailyWeight]) -> Bool {
-        PlanReviewTrigger.shouldPropose(phase: phase, through: through, weights: w, settings: s)
+        PlanReviewTrigger.shouldPropose(phase: phase, through: through, weights: w, roadmap: roadmap)
     }
 
     @Test("14日連続で 2% 以上ずれていたら提案する")
@@ -64,6 +65,15 @@ struct PlanReviewTriggerTests {
         let w = constant(guideline(stage2, origin) * 1.025, from: origin)
         #expect(propose(stage2, through: origin.adding(days: 13), w))
         #expect(!propose(stage2, through: origin.adding(days: 12), w))
+    }
+
+    @Test("ステージ1で計画見直しを採用した後は、新しい起点から14日で再び提案できる(30日の除外は再発しない)")
+    func afterRebaseInStage1() {
+        let rebaseDay = start.adding(days: 44)
+        let rebased = stage1.rebased(sevenDayAverage: 118.0, on: rebaseDay)!
+        let w = constant(guideline(rebased, rebaseDay) * 1.025, from: rebaseDay)
+        #expect(propose(rebased, through: rebaseDay.adding(days: 13), w))
+        #expect(!propose(rebased, through: rebaseDay.adding(days: 12), w))   // 起点より前の日を含む
     }
 
     @Test("維持中と維持モードでは提案しない")

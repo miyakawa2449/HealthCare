@@ -107,6 +107,9 @@
 | 到達予定日の計算し直し(減量中) | losing(1, 118.0 @ 11-20) | ステージ1 = 11-20 + 89日、ステージ2 = +60 + 158 |
 | 到達予定日の計算し直し(維持中) | maintaining(1, 111.2 @ 2027-04-01) | ステージ1 = 04-01、ステージ2 = 04-01 + 60 + 158、ステージ3 = +60 + 157 |
 | 手前のステージは触らない | losing(2, 110.9 @ 05-22) | ステージ1の予定日は維持中の値のまま、ステージ2 = 05-22 + 154 |
+| 範囲外の番号 | phaseOnArrival(0 / 7)、phaseOnAdvance(maintaining 0 / 7)、rescheduled(0 / 7) | nil / nil / 元のまま |
+| ステージなしの計画 | 開始 67.0、目標 67.4 | initialPhase は nil |
+| 最終ステージの計算し直し | losing(6, 72.0 @ 2029-01-10)/ maintaining(6, 67.4 @ 04-01)/ maintenanceMode | 手前5つは不変、最終 = 01-10 + 99 / 04-01 / 元のまま |
 | Codable | 3種のフェーズを往復 | 等しい |
 
 ## Guideline(フェーズ)/ ProgressJudgment(フェーズ)
@@ -117,6 +120,8 @@
 | 維持中・維持モードの計画値 | maintaining / maintenanceMode | 到達時の体重で一定 |
 | ステージ2以降は起点の日から判定 | losing(2) 経過0日 | onTrack(settlingIn ではない) |
 | 維持中は判定しない | maintaining / maintenanceMode | nil |
+| ステージ1の見直し採用後 | 経過44日に再起点、経過45日 | onTrack(settlingIn は再発しない) |
+| ステージ1の見直し採用後の計画見直し | 再起点から14日 | true。13日では false |
 | ステージ2以降の計画見直し | 起点から14日 | true。起点より前の日を含む窓は false |
 | 維持中の計画見直し | maintaining / maintenanceMode | false |
 
@@ -139,6 +144,7 @@
 | ステージ2の28日目(経過27日)/ 29日目(経過28日) | | windowDays 27 / 28 |
 | ステージ2の30日目(経過29日) | 窓が経過1日に動く | windowDays 28 |
 | ステージ2以降に最初の1か月の除外はない | 経過10日 | windowDays 10 |
+| ステージ1の見直し採用後 | 経過44日に再起点、経過45日 | windowDays 28(下限は計画の開始日 + 13 のまま) |
 | 維持中 | maintaining / maintenanceMode | nil |
 
 ## MaintenanceJudgment(到達 2026-11-01、到達体重 111.2、範囲 ±2% = 108.98〜113.42)

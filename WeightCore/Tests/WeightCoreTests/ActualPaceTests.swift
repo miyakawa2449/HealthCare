@@ -5,6 +5,7 @@ import Testing
 struct ActualPaceTests {
     let s = PlanSettings.default
     let start = day(2026, 10, 18)
+    var roadmap: Roadmap { Roadmap(startWeight: 123.5, startDay: day(2026, 10, 18), targetWeight: 67.4, settings: .default) }
     var stage1: PlanPhase { .losing(stage: 1, origin: StageOrigin(weight: 123.5, day: start)) }
 
     /// 起点から `thenOffset` 日までの7日を `before`、`nowOffset` 日までの7日を `after` にしたデータ。
@@ -24,7 +25,7 @@ struct ActualPaceTests {
     }
 
     func pace(_ phase: PlanPhase, on day: CalendarDay, _ w: [DailyWeight]) -> ActualPace? {
-        ActualPace(endingOn: day, phase: phase, weights: w, settings: s)
+        ActualPace(endingOn: day, phase: phase, weights: w, roadmap: roadmap)
     }
 
     // MARK: ステージ1(最初の1か月と14日目の下限)
@@ -134,6 +135,15 @@ struct ActualPaceTests {
     func noFirstMonthBlackoutInLaterStages() throws {
         let w = weights(origin: stage2Origin, thenOffset: 0, before: 110.9, nowOffset: 10, after: 110.0)
         #expect(try #require(pace(stage2, on: stage2Origin.adding(days: 10), w)).windowDays == 10)
+    }
+
+    @Test("ステージ1で計画見直しを採用しても、窓の下限は計画の開始日 + 13日のまま(再起点で狭まらない)")
+    func rebaseInStage1KeepsWindowFloor() throws {
+        let rebased = stage1.rebased(sevenDayAverage: 118.0, on: start.adding(days: 44))!
+        // 経過45日: 窓は max(45−28, 13) = 17 から → n = 28。再起点(経過44日)を下限にすると n = 1 になってしまう
+        let w = weights(origin: start, thenOffset: 17, before: 100.0, nowOffset: 45, after: 98.0)
+        let p = try #require(pace(rebased, on: start.adding(days: 45), w))
+        #expect(p.windowDays == 28)
     }
 
     @Test("維持中と維持モードでは nil")

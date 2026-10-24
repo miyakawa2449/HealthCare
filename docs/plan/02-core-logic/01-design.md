@@ -68,7 +68,7 @@ public enum PlanPhase: Codable {
 ```
 
 - アプリが保存する「いまどこにいるか」。計画値(目安)、進み具合、実績ペース、計画見直しはすべてこれを基準にする。
-- 遷移は `Roadmap` のメソッドで表す: `initialPhase`(ステージ1、起点は計画の開始)、`phaseOnArrival(stage:sevenDayAverage:on:)`(維持期間へ。最終ステージなら維持モード)、`phaseOnAdvance(from:sevenDayAverage:on:)`(維持期間から次のステージへ。その日の7日平均と日付が次の起点)。
+- 遷移は `Roadmap` のメソッドで表す: `initialPhase`(ステージ1、起点は計画の開始。ステージがなければ nil)、`phaseOnArrival(stage:sevenDayAverage:on:)`(維持期間へ。最終ステージなら維持モード。番号が 1...ステージ数 の外なら nil)、`phaseOnAdvance(from:sevenDayAverage:on:)`(維持期間から次のステージへ。その日の7日平均と日付が次の起点。範囲外なら nil)。`rescheduled(from:)` は範囲外のフェーズを無視して元のロードマップを返す。
 - `Roadmap.rescheduled(from:)` でフェーズから到達予定日を計算し直す。減量中はそのステージを起点から、維持中はそのステージの予定日を実際の到達日にして次を「到達日 + 維持期間(仮定)」から。境界と手前のステージは変えない。
 
 ## 3. 目安と進み具合: `Guideline`、`ProgressJudgment`
@@ -86,7 +86,7 @@ public enum ProgressJudgment: Sendable, Equatable {
     case aheadOfSchedule  // 予定より早いペース
     case slowerPace       // ゆっくりペース
     /// 減量中でなければ nil
-    public static func judge(phase: PlanPhase, sevenDayAverage: Double, on day: CalendarDay, settings: PlanSettings) -> ProgressJudgment?
+    public static func judge(phase: PlanPhase, sevenDayAverage: Double, on day: CalendarDay, roadmap: Roadmap) -> ProgressJudgment?
     public static func judge(sevenDayAverage: Double, guideline: Double, settings: PlanSettings) -> ProgressJudgment
 }
 ```
@@ -94,7 +94,7 @@ public enum ProgressJudgment: Sendable, Equatable {
 - `ratio = Ratio.rounded((sevenDayAverage − guideline) / guideline)`(分母は目安の値)。
 - `|ratio| <= progressBand` → `onTrack`、`ratio < −progressBand` → `aheadOfSchedule`、`ratio > progressBand` → `slowerPace`。
 - 起点より前の日は起点の体重を返す。
-- 最初の1か月(`settlingIn`)はステージ1の起点から `initialPeriodDays` 未満だけ。ステージ2以降は起点の日から判定する。
+- 最初の1か月(`settlingIn`)は計画の開始日(`roadmap.startDay`)から `initialPeriodDays` 未満、ステージ1だけ。ステージ1で計画見直しを採用して起点を取り直しても再発しない。ステージ2以降は起点の日から判定する。判定 API が `roadmap` を受け取るのは、この開始日と設定値のため。
 
 ## 4. 安全性の判定: `SafetyJudgment`
 
@@ -148,14 +148,14 @@ public struct ActualPace {
     public var monthlyRate: Double
     public var windowDays: Int
     /// 減量中だけ。データ不足なら nil
-    public init?(endingOn day: CalendarDay, phase: PlanPhase, weights: [DailyWeight], settings: PlanSettings)
+    public init?(endingOn day: CalendarDay, phase: PlanPhase, weights: [DailyWeight], roadmap: Roadmap)
     public func isTooFast(settings: PlanSettings) -> Bool
 }
 ```
 
 - `now = SevenDayAverage(day)`、`then = SevenDayAverage(窓の始まりの日)`。どちらかが `nil` なら `nil`。
-- 窓の始まりは `max(経過日数 − actualPaceWindowDays, 下限)`。下限はステージ1なら `actualPaceWindowStartFloor = 13`(14日目 = 経過13日。初期の水分減少を含めない。03-decisions.md #5)、ステージ2以降は 0(ステージの起点。#9 の補足)。窓の日数 n は、ステージ1では 31日目で 17、42日目で 28。ステージ2以降では経過1日で 1、経過28日で 28。
-- ステージ1の `initialPeriodDays`(30)未満は `nil`(最初の1か月は判定しない)。ステージ2以降に除外はない。
+- 窓の始まりの日は `max(day − actualPaceWindowDays, 下限の日)`。下限の日はステージ1なら「計画の開始日 + `actualPaceWindowStartFloor`(13)」(14日目。初期の水分減少を含めない。03-decisions.md #5)、ステージ2以降はステージの起点の日(#9 の補足)。ステージ1の下限は計画の開始日が基準なので、計画見直しで起点を取り直しても窓は狭まらない。窓の日数 n は、ステージ1では 31日目で 17、42日目で 28。ステージ2以降では経過1日で 1、経過28日で 28。
+- ステージ1で計画の開始日から `initialPeriodDays`(30)未満は `nil`(最初の1か月は判定しない)。ステージ2以降に除外はない。
 - `monthlyRate = Pace.monthlyRate(ratio: now / then, overDays: n)` = `1 − (now / then)^(daysPerMonth / n)`(03-decisions.md #4)。戻り値は `monthlyRate` と `windowDays` を持つ構造体。
 - `isTooFast = Ratio.rounded(monthlyRate) > fastPaceMonthlyLimit`。ちょうど3%は速すぎではない。
 - **`Pace`**: 「月」の定義を1か所にまとめる型。`Guideline` の日割りと `ActualPace` の月換算は互いに逆関数になる(`Guideline` で28日後の目安を出し、その比を `Pace.monthlyRate` に通すと `monthlyRate` に戻る)。これをテストで確認する。
@@ -184,12 +184,12 @@ public enum MaintenanceJudgment {
 ```swift
 public enum PlanReviewTrigger {
     public static func shouldPropose(phase: PlanPhase, through day: CalendarDay,
-                                     weights: [DailyWeight], settings: PlanSettings) -> Bool
+                                     weights: [DailyWeight], roadmap: Roadmap) -> Bool
 }
 ```
 
 - 減量中だけ。`day` から遡って `reviewWindowDays`(14)日の各日について、7日平均と計画値(`Guideline.expectedWeight(phase:on:)`)の差の割合を `Ratio.rounded` し、`|ratio| >= reviewDeviation`(2%) なら「ずれている」。分母は計画値。
-- 14日すべてがずれていたら `true`。7日平均が `nil` の日、ステージの起点より前の日、ステージ1の最初の1か月に入る日が窓にあれば `false`。上下どちらのずれも対象(03-decisions.md #6)。
+- 14日すべてがずれていたら `true`。7日平均が `nil` の日、ステージの起点より前の日、ステージ1の最初の1か月(計画の開始日基準)に入る日が窓にあれば `false`。ステージ1で見直しを採用した後は、新しい起点から14日で再び提案できる。上下どちらのずれも対象(03-decisions.md #6)。
 - 見直しの採用は `phase.rebased(sevenDayAverage:on:)` で起点を取り直し、`roadmap.rescheduled(from:)` で到達予定日を計算し直す。境界は変えない。
 
 ## 9. 最初の1か月(案A)
