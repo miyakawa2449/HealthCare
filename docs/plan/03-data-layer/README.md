@@ -71,7 +71,7 @@ xcodebuild -project WeightApp.xcodeproj -scheme WeightApp \
 ### 実機でしか確認できないこと
 
 - HealthKit の権限ダイアログに確定文言が出ること、許可後に体重と体脂肪率が読めること
-- HealthPlanet が書き込むサンプルの `HKSource.bundleIdentifier`(Xcode のコンソールにソースの Bundle ID を出力して確認し、`DataSourceSettings` に入れる)
+- HealthPlanet が書き込むサンプルの `HKSource.bundleIdentifier`: 2026-10-24 に実機で `jp.co.tanita-thl.HealthPlanet` と確認し、`DataSourceSettings` に設定済み
 
 ## 承認の手順
 
