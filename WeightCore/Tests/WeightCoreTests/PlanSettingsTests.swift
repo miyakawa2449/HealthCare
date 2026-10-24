@@ -55,6 +55,13 @@ struct PlanSettingsTests {
         #expect(settings.actualPaceWindowStartFloor == 13)
     }
 
+    @Test("実績ペースの最低窓は14日、維持中の一言は14日、早期到達の再提案は14日後")
+    func phase3Additions() {
+        #expect(settings.actualPaceMinimumWindowDays == 14)
+        #expect(settings.maintenanceNoticeDays == 14)
+        #expect(settings.earlyArrivalRetryDays == 14)
+    }
+
     @Test("最終目標の初期値はBMI22")
     func defaultTargetBMI() {
         #expect(settings.defaultTargetBMI == 22)

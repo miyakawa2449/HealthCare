@@ -46,6 +46,12 @@ public struct PlanSettings: Sendable, Equatable, Codable {
     public var initialPeriodDays: Int
     /// 実績ペースの窓の始まりを、この経過日数より前にしない(初期の水分減少を含めないため)。14日目 = 経過13日。
     public var actualPaceWindowStartFloor: Int
+    /// 実績ペースの窓の最低日数。これ未満なら判定しない(1日の揺れが 30/n 乗で拡大されるため)。
+    public var actualPaceMinimumWindowDays: Int
+    /// 維持中に、7日平均が範囲外に連続してこの日数続いたら一言を出す。
+    public var maintenanceNoticeDays: Int
+    /// 早期到達の提案を断った日から、この日数後に再提案する。
+    public var earlyArrivalRetryDays: Int
 
     public init(
         monthlyRate: Double,
@@ -65,7 +71,10 @@ public struct PlanSettings: Sendable, Equatable, Codable {
         defaultTargetBMI: Double,
         assumedMaintenanceDays: Int,
         initialPeriodDays: Int,
-        actualPaceWindowStartFloor: Int
+        actualPaceWindowStartFloor: Int,
+        actualPaceMinimumWindowDays: Int,
+        maintenanceNoticeDays: Int,
+        earlyArrivalRetryDays: Int
     ) {
         self.monthlyRate = monthlyRate
         self.daysPerMonth = daysPerMonth
@@ -85,6 +94,9 @@ public struct PlanSettings: Sendable, Equatable, Codable {
         self.assumedMaintenanceDays = assumedMaintenanceDays
         self.initialPeriodDays = initialPeriodDays
         self.actualPaceWindowStartFloor = actualPaceWindowStartFloor
+        self.actualPaceMinimumWindowDays = actualPaceMinimumWindowDays
+        self.maintenanceNoticeDays = maintenanceNoticeDays
+        self.earlyArrivalRetryDays = earlyArrivalRetryDays
     }
 
     /// AGENTS.md のドメインルールどおりの既定値。
@@ -106,6 +118,9 @@ public struct PlanSettings: Sendable, Equatable, Codable {
         defaultTargetBMI: 22,
         assumedMaintenanceDays: 60,
         initialPeriodDays: 30,
-        actualPaceWindowStartFloor: 13
+        actualPaceWindowStartFloor: 13,
+        actualPaceMinimumWindowDays: 14,
+        maintenanceNoticeDays: 14,
+        earlyArrivalRetryDays: 14
     )
 }
