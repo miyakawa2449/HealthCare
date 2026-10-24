@@ -122,7 +122,8 @@ final class PlanStore {
 ```
 
 - JSON(`JSONEncoder` / `JSONDecoder`、ISO8601 ではなく `CalendarDay` の年月日をそのまま)。原子的に書き込む(`.atomic`)。
-- `schemaVersion` を持たせ、将来の移行に備える。今回は 1 のみ。
+- `schemaVersion` を持たせ、将来の移行に備える。今回は 1 のみ。読み込み時に検証し、違えば `PlanStoreError.unsupportedSchemaVersion` を投げる(黙って読まない)。
+- App Group のコンテナが取れないときは退避先を作らない(別の場所に保存すると、後で App Group が使えるようになったときに見えなくなるため)。`PlanStore.defaultDirectory()` は nil を返し、`HomeModel` が「利用不可」として持つ。
 
 ### B4. 集約: `DailySummaryBuilder`、`DailySummary`
 
@@ -143,16 +144,20 @@ struct DailySummary: Equatable {
 }
 struct DailySummaryBuilder {
     init(store: HealthStore, planStore: PlanStore, calendar: Calendar, settings: PlanSettings)
-    func build(on day: CalendarDay) async throws -> DailySummary?   // 計画がなければ nil
+    func build(on day: CalendarDay) async throws -> DailySummary   // 計画がなければ plan が nil
 }
 ```
 
+- 実装時の変更: 初回設定の UI がまだないため、計画がなくても 7日平均と当日の体重・体脂肪率は返し、計画の判定だけ `plan: PlanStatus?` を nil にする(`DailySummary` を `todayWeight` / `todayBodyFat` / `sevenDayAverage` / `plan` の形に分けた)。実機で HealthKit の読み取りを確認するため。
+- 当日の7日平均が要るのは進み具合と早期到達だけ。維持期間の判定(85日目のカードを含む)、一言、実績ペース、計画見直しは、当日の平均がなくても評価する。
 - WeightCore の関数を順に呼ぶだけで、判断を足さない。表示の優先順位(85日目のカード > 一言)は画面のフェーズで決めるので、ここでは両方を返す。
-- `stageNumber` は `phase.losingStage` または `.maintaining(stage:)` の番号。`stage(containing:)` は使わない。
+- `stageNumber` は `.losing` / `.maintaining` の番号。維持モードは nil。`stage(containing:)` は使わない。
+- 計画がないときの取得期間は「当日を含む30日」(day − 29 の 0 時から)。
 
-### B5. 更新の検知
+### B5. 更新の検知: `HomeModel`
 
-- アプリがフォアグラウンドに戻ったとき(`scenePhase == .active`)に再取得する。ヘルスケアへの反映は HealthPlanet を開いたときなので、これで足りる(03-decisions.md #4)。
+- `HomeModel`(`@MainActor @Observable`)を `WeightApp` が1つだけ持ち、起動時とフォアグラウンド復帰時(`scenePhase == .active`)に `refresh()` を呼ぶ。モデルは作り直さない。
+- 取り直しに失敗したら前回の値を残し、`lastRefreshFailed` を立てる(成功で戻す)。HealthKit が使えない、または保存先が取れないときは `isUnavailable`。見せ方と文言はフェーズ4で決める。ヘルスケアへの反映は HealthPlanet を開いたときなので、これで足りる(03-decisions.md #4)。
 - `HKObserverQuery` と `enableBackgroundDelivery` はウィジェットのフェーズで入れる。
 
 ### ContentView(最小)

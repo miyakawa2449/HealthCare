@@ -39,8 +39,25 @@ struct DailySummaryBuilderTests {
         let builder = DailySummaryBuilder(health: health, planStore: try makeStore(), calendar: cal, settings: .default)
         _ = try await builder.build(on: start)
         let range = try #require(await health.requestedRanges.first)
-        #expect(range.from == start.adding(days: -30).startDate(in: cal))
+        #expect(range.from == start.adding(days: -29).startDate(in: cal))   // 当日を含む30日
         #expect(range.to == start.adding(days: 1).startDate(in: cal))
+    }
+
+    @Test("維持期間の85日目: 直近7日の体重がなくても exceededMaximum のカードの判定は出る")
+    func exceededMaximumWithoutRecentWeights() async throws {
+        let store = try makeStore()
+        let arrivalDay = CalendarDay(year: 2027, month: 3, day: 23)
+        let phase = roadmap.phaseOnArrival(stage: 1, sevenDayAverage: 111.2, on: arrivalDay)!
+        try store.save(PlanRecord(roadmap: roadmap, phase: phase, originalRoadmap: nil, declinedEarlyArrivalOn: nil))
+        // 到達後に範囲外(115.0)が続き、直近10日はデータなし
+        let health = MockHealthStore(weights: samples(from: arrivalDay.adding(days: -6), days: 80, 115.0))
+        let builder = DailySummaryBuilder(health: health, planStore: store, calendar: cal, settings: .default)
+        let s = try #require(try await builder.build(on: arrivalDay.adding(days: 85)))
+        #expect(s.sevenDayAverage == nil)
+        let plan = try #require(s.plan)
+        #expect(plan.maintenance == .exceededMaximum(consecutiveDaysInBand: 0))
+        #expect(plan.earlyArrivalStage == nil)
+        #expect(!plan.shouldProposeEarlyArrival)
     }
 
     @Test("減量中ステージ1、経過45日: 計画値・進み具合・実績ペース(窓28日)が出て、維持の判定は nil")

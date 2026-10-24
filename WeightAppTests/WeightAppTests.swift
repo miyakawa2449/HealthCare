@@ -6,7 +6,7 @@ struct WeightAppTests {
     @Test("アプリモジュールが読み込める")
     @MainActor
     func appModuleLoads() {
-        _ = ContentView()
+        _ = ContentView(model: HomeModel(health: MockHealthStore(weights: []), planStore: nil))
     }
 
     @Test("HealthKit の説明文が確定文言と一致する")

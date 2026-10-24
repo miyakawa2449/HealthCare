@@ -56,4 +56,14 @@ struct PlanStoreTests {
         #expect(json?["schemaVersion"] as? Int == PlanRecord.currentSchemaVersion)
         #expect(PlanRecord.currentSchemaVersion == 1)
     }
+
+    @Test("スキーマのバージョンが違えば専用のエラーを投げる", arguments: [0, 2, 999])
+    func rejectsOtherSchemaVersions(version: Int) throws {
+        let store = try makeStore()
+        try store.save(record)
+        var json = try JSONSerialization.jsonObject(with: Data(contentsOf: store.fileURL)) as! [String: Any]
+        json["schemaVersion"] = version
+        try JSONSerialization.data(withJSONObject: json).write(to: store.fileURL)
+        #expect(throws: PlanStoreError.unsupportedSchemaVersion(version)) { try store.load() }
+    }
 }

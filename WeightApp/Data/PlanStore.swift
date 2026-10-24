@@ -21,6 +21,11 @@ struct PlanRecord: Codable, Equatable {
     }
 }
 
+enum PlanStoreError: Error, Equatable {
+    /// 保存した JSON のスキーマのバージョンが、このビルドが扱える版と違う(移行が要る)。
+    case unsupportedSchemaVersion(Int)
+}
+
 /// 計画の記録を JSON で保存する。保存先は App Group のコンテナ(ウィジェットが後で読む)。
 final class PlanStore: Sendable {
     static let appGroupIdentifier = "group.com.miyakawa.weightapp"
@@ -31,20 +36,19 @@ final class PlanStore: Sendable {
         fileURL = directory.appendingPathComponent("plan.json")
     }
 
-    /// App Group のコンテナ。取れなければ Application Support(シミュレーターや署名の問題に備えた退避先)。
-    static func defaultDirectory() -> URL {
-        if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) {
-            return container
-        }
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
-        return support
+    /// App Group のコンテナ。取れなければ nil(退避先は作らない。別の場所に保存すると後で見えなくなるため)。
+    static func defaultDirectory() -> URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)
     }
 
-    /// 未保存なら nil。壊れていればエラーを投げる。
+    /// 未保存なら nil。壊れていればエラー、スキーマのバージョンが違えば `PlanStoreError` を投げる。
     func load() throws -> PlanRecord? {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
-        return try JSONDecoder().decode(PlanRecord.self, from: Data(contentsOf: fileURL))
+        let record = try JSONDecoder().decode(PlanRecord.self, from: Data(contentsOf: fileURL))
+        guard record.schemaVersion == PlanRecord.currentSchemaVersion else {
+            throw PlanStoreError.unsupportedSchemaVersion(record.schemaVersion)
+        }
+        return record
     }
 
     func save(_ record: PlanRecord) throws {

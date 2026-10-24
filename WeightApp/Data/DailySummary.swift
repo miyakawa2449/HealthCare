@@ -32,13 +32,13 @@ struct DailySummaryBuilder: Sendable {
     let calendar: Calendar
     let settings: PlanSettings
 
-    /// 計画がなければ直近30日、あれば開始日の6日前から取得する(03-decisions.md #8)。
+    /// 計画がなければ当日を含む直近30日、あれば開始日の6日前から取得する(03-decisions.md #8)。
     static let daysWithoutPlan = 30
 
     func build(on day: CalendarDay) async throws -> DailySummary {
         let record = try planStore.load()
         let firstDay = record.map { $0.roadmap.startDay.adding(days: -(SevenDayAverage.windowDays - 1)) }
-            ?? day.adding(days: -Self.daysWithoutPlan)
+            ?? day.adding(days: -(Self.daysWithoutPlan - 1))
         let from = firstDay.startDate(in: calendar)
         let to = day.adding(days: 1).startDate(in: calendar)
 
@@ -74,19 +74,23 @@ struct DailySummaryBuilder: Sendable {
             progress: nil, actualPace: nil, maintenance: nil, maintenanceNotice: nil,
             earlyArrivalStage: nil, shouldProposeEarlyArrival: false, shouldProposePlanReview: false
         )
-        guard let average else { return status }
-
+        // 当日の7日平均が要るのは進み具合と早期到達だけ。維持期間の判定(85日目のカードを含む)と一言は
+        // 到達日からの履歴で決まるので、当日の平均がなくても評価する
         switch phase {
         case .losing:
-            status.progress = ProgressJudgment.judge(phase: phase, sevenDayAverage: average.kilograms, on: day, roadmap: roadmap)
+            if let average {
+                status.progress = ProgressJudgment.judge(phase: phase, sevenDayAverage: average.kilograms, on: day, roadmap: roadmap)
+            }
             status.actualPace = ActualPace(endingOn: day, phase: phase, weights: weights, roadmap: roadmap)
             status.shouldProposePlanReview = PlanReviewTrigger.shouldPropose(phase: phase, through: day, weights: weights, roadmap: roadmap)
         case .maintaining(_, let arrival):
             status.maintenance = MaintenanceJudgment.evaluate(arrivalDay: arrival.day, arrivalWeight: arrival.weight, through: day, weights: weights, settings: settings)
             status.maintenanceNotice = MaintenanceNoticeJudgment.notice(phase: phase, through: day, weights: weights, settings: settings)
-            status.earlyArrivalStage = roadmap.earlyArrival(phase: phase, sevenDayAverage: average.kilograms)
-            status.shouldProposeEarlyArrival = EarlyArrivalProposal.shouldPropose(
-                earlyArrivalStage: status.earlyArrivalStage, declinedOn: record.declinedEarlyArrivalOn, today: day, settings: settings)
+            if let average {
+                status.earlyArrivalStage = roadmap.earlyArrival(phase: phase, sevenDayAverage: average.kilograms)
+                status.shouldProposeEarlyArrival = EarlyArrivalProposal.shouldPropose(
+                    earlyArrivalStage: status.earlyArrivalStage, declinedOn: record.declinedEarlyArrivalOn, today: day, settings: settings)
+            }
         case .maintenanceMode:
             status.maintenanceNotice = MaintenanceNoticeJudgment.notice(phase: phase, through: day, weights: weights, settings: settings)
         }

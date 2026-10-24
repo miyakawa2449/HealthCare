@@ -3,7 +3,7 @@ import WeightCore
 
 /// 起動確認の延長。7日平均(大)と当日の体重(小)の数値だけを出す。評価・色・ステージは出さない(フェーズ4)。
 struct ContentView: View {
-    @State private var model = HomeModel.live()
+    let model: HomeModel
 
     var body: some View {
         VStack(spacing: 16) {
@@ -20,7 +20,6 @@ struct ContentView: View {
                 Text("今日の体重")
             }
         }
-        .task { await model.refresh() }
     }
 
     static func kilograms(_ value: Double) -> String {
@@ -29,5 +28,5 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView()
+    ContentView(model: HomeModel(health: MockHealthStore(weights: []), planStore: nil))
 }

@@ -18,6 +18,10 @@ actor MockHealthStore: HealthStore {
     var bodyFats: [BodyFatSample]
     private(set) var authorizationRequests = 0
     private(set) var requestedRanges: [(from: Date, to: Date)] = []
+    /// 設定すると取得時にこのエラーを投げる(失敗時の挙動のテスト用)。
+    var failure: (any Error)?
+
+    func setFailure(_ error: (any Error)?) { failure = error }
 
     init(weights: [WeightSample], bodyFats: [BodyFatSample] = []) {
         self.weights = weights
@@ -28,6 +32,7 @@ actor MockHealthStore: HealthStore {
 
     func weightSamples(from: Date, to: Date) async throws -> [WeightSample] {
         requestedRanges.append((from, to))
+        if let failure { throw failure }
         return weights.filter { $0.measuredAt >= from && $0.measuredAt < to }
     }
 

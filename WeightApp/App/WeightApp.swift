@@ -3,17 +3,16 @@ import SwiftUI
 @main
 struct WeightApp: App {
     @Environment(\.scenePhase) private var scenePhase
+    @State private var model = HomeModel.live()
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .id(refreshToken)
+            ContentView(model: model)
         }
-        .onChange(of: scenePhase) { _, phase in
-            // フォアグラウンドに戻ったら取り直す(HealthPlanet を開いた後にこのアプリを開く運用のため)
-            if phase == .active { refreshToken += 1 }
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            // 起動時とフォアグラウンド復帰時に取り直す(HealthPlanet を開いた後にこのアプリを開く運用のため)。
+            // モデルは作り直さないので、失敗しても前回の値が残る
+            if phase == .active { Task { await model.refresh() } }
         }
     }
-
-    @State private var refreshToken = 0
 }
