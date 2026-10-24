@@ -40,7 +40,7 @@ extension Roadmap {
 
 - `earlyArrival` は `.maintaining(stage: k)` で `k < stages.count` かつ `Weight.rounded(avg) <= stages[k].boundaryWeight` のとき `k + 1`。維持モードでは nil(次の境界がない)。
 - `phaseOnEarlyArrival` は `phaseOnArrival(stage: k + 1, ...)` と同じ遷移。予定日の更新はアプリ側が `rescheduled(from:)` を呼ぶ。
-- 「維持を続ける」を選んだ場合はフェーズを変えない。同じ日に再び聞かないための「断った記録」はアプリ側(B3)で持つ。
+- 「維持を続ける」を選んだ場合はフェーズを変えない。断った日を保存し(B3)、その日から14日後にまだ次の境界以下なら再提案する。`EarlyArrivalProposal.shouldPropose(earlyArrival:declinedOn:today:settings:)` を WeightCore に置き、`PlanSettings.earlyArrivalRetryDays = 14` を追加する。85日目の提案カードと重なったらカードを優先する(表示側)。
 
 ### A4. 体脂肪率の1日の値: `DailySampleResolver`
 
@@ -96,7 +96,6 @@ protocol HealthStore: Sendable {
     func requestReadAuthorization() async throws
     func weightSamples(from: Date, to: Date) async throws -> [WeightSample]
     func bodyFatSamples(from: Date, to: Date) async throws -> [BodyFatSample]
-    func startObserving(_ onChange: @escaping @Sendable () -> Void) throws   // 03-decisions.md #4
 }
 ```
 
@@ -112,7 +111,7 @@ struct PlanRecord: Codable, Equatable {
     var roadmap: Roadmap
     var phase: PlanPhase
     var originalRoadmap: Roadmap?        // 計画見直しを採用したときの「元の計画に戻す」用。採用前は nil
-    var declinedEarlyArrivalOn: CalendarDay?  // 早期到達の提案を断った日(同じ日に再提案しない)
+    var declinedEarlyArrivalOn: CalendarDay?  // 早期到達の提案を断った日。その日から14日後に、まだ次の境界以下なら再提案(03-decisions.md #7)
     var schemaVersion: Int               // 1
 }
 final class PlanStore {
@@ -153,8 +152,8 @@ struct DailySummaryBuilder {
 
 ### B5. 更新の検知
 
-- アプリがフォアグラウンドに戻ったときに再取得する(確実に動く経路)。
-- `HKObserverQuery` と `enableBackgroundDelivery` は 03-decisions.md #4 の回答で決める。入れる場合も「実機未確認」と README に書く。
+- アプリがフォアグラウンドに戻ったとき(`scenePhase == .active`)に再取得する。ヘルスケアへの反映は HealthPlanet を開いたときなので、これで足りる(03-decisions.md #4)。
+- `HKObserverQuery` と `enableBackgroundDelivery` はウィジェットのフェーズで入れる。
 
 ### ContentView(最小)
 

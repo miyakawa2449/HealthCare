@@ -1,7 +1,7 @@
 # フェーズ3: データ層(HealthKit 連携と永続化)+ WeightCore の追補 計画
 
 作成日: 2026-10-24
-状態: **承認待ち**(コードは未着手)
+状態: **承認済み**(2026-10-24。03-decisions.md の8件に回答済み)
 ブランチ: `feature/phase3-data-layer`
 
 フェーズ2の回答(2026-10-24)で決まった追加仕様(実績ペースの最低窓、維持中の一言、維持中の早期到達)を WeightCore に入れ、
@@ -33,7 +33,7 @@
 | B2 | HKSample → WeightCore の値型への変換。HKSource の Bundle ID → `SampleSource` | `HealthSampleMapper`、`DataSourceSettings.healthPlanetBundleIDs` |
 | B3 | ロードマップ・フェーズ・元の計画の保存(JSON) | `PlanStore`、`PlanRecord` |
 | B4 | 取得 → 1日の値 → 7日平均 → フェーズ判定 をまとめ、画面が使う値を1つの型で返す | `DailySummaryBuilder`、`DailySummary` |
-| B5 | HealthKit の更新の検知(アプリ起動時の再取得。バックグラウンド受信は 03-decisions.md #4) | `HealthKitStore.observe` |
+| B5 | HealthKit の更新の検知: フォアグラウンド復帰時の再取得だけ(バックグラウンド受信はウィジェットのフェーズ。03-decisions.md #4) | `WeightApp` の scenePhase |
 | B6 | カレンダーの固定(Asia/Tokyo) | `AppCalendar` |
 
 ### 対象外(後のフェーズ)
@@ -72,7 +72,6 @@ xcodebuild -project WeightApp.xcodeproj -scheme WeightApp \
 
 - HealthKit の権限ダイアログに確定文言が出ること、許可後に体重と体脂肪率が読めること
 - HealthPlanet が書き込むサンプルの `HKSource.bundleIdentifier`(Xcode のコンソールにソースの Bundle ID を出力して確認し、`DataSourceSettings` に入れる)
-- バックグラウンド受信(03-decisions.md #4 で入れる場合)
 
 ## 承認の手順
 
