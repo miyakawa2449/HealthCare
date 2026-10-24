@@ -41,14 +41,20 @@ final class PlanStore: Sendable {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)
     }
 
-    /// 未保存なら nil。壊れていればエラー、スキーマのバージョンが違えば `PlanStoreError` を投げる。
+    /// 未保存なら nil。スキーマのバージョンが違えば `PlanStoreError`(本体を読む前に判定する)、壊れていれば DecodingError を投げる。
     func load() throws -> PlanRecord? {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
-        let record = try JSONDecoder().decode(PlanRecord.self, from: Data(contentsOf: fileURL))
-        guard record.schemaVersion == PlanRecord.currentSchemaVersion else {
-            throw PlanStoreError.unsupportedSchemaVersion(record.schemaVersion)
+        let data = try Data(contentsOf: fileURL)
+        let header = try JSONDecoder().decode(SchemaHeader.self, from: data)
+        guard header.schemaVersion == PlanRecord.currentSchemaVersion else {
+            throw PlanStoreError.unsupportedSchemaVersion(header.schemaVersion)
         }
-        return record
+        return try JSONDecoder().decode(PlanRecord.self, from: data)
+    }
+
+    /// バージョン判定のためにまず読む部分。他の項目が変わっていても読める。
+    private struct SchemaHeader: Decodable {
+        var schemaVersion: Int
     }
 
     func save(_ record: PlanRecord) throws {

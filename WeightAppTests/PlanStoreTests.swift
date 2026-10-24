@@ -66,4 +66,11 @@ struct PlanStoreTests {
         try JSONSerialization.data(withJSONObject: json).write(to: store.fileURL)
         #expect(throws: PlanStoreError.unsupportedSchemaVersion(version)) { try store.load() }
     }
+
+    @Test("項目の構成が違う将来のバージョンでも、本体を読む前にバージョンのエラーになる")
+    func futureSchemaWithDifferentFields() throws {
+        let store = try makeStore()
+        try Data(#"{"schemaVersion": 2, "analysis": {"notes": "ai"}}"#.utf8).write(to: store.fileURL)
+        #expect(throws: PlanStoreError.unsupportedSchemaVersion(2)) { try store.load() }
+    }
 }
