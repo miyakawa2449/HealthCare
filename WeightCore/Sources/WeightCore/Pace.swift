@@ -21,3 +21,11 @@ public enum Guideline {
         startWeight * Pace.factor(monthlyRate: settings.monthlyRate, overDays: max(daysElapsed, 0), settings: settings)
     }
 }
+
+extension Pace {
+    /// 体重が `ratio` 倍(後 ÷ 前、1 未満)になるまでに、月あたり `monthlyRate` のペースで必要な日数(切り上げ)。
+    public static func days(toReach ratio: Double, monthlyRate: Double, settings: PlanSettings) -> Int {
+        guard ratio < 1 else { return 0 }
+        return Int((log(ratio) / log(1 - monthlyRate) * Double(settings.daysPerMonth)).rounded(.up))
+    }
+}
