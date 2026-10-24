@@ -25,3 +25,13 @@ extension RoundingTests {
         #expect(Weight.rounded(123.5 * 0.9) == 111.2)
     }
 }
+
+extension RoundingTests {
+    @Test("許容誤差の明文化: 1e-13 以内で境界を下回る値は境界以上として扱う(表現誤差の救済)")
+    func toleranceIsDocumented() {
+        #expect(Ratio.rounded(0.00504999999995) == 0.0051)   // 補正幅の内側
+        #expect(Ratio.rounded(0.0050499) == 0.0050)          // 補正幅の外側は通常どおり
+        #expect(Weight.rounded(111.14999999999) == 111.2)  // 補正幅(1e-10kg)の内側
+        #expect(Weight.rounded(111.14999) == 111.1)        // 外側は通常どおり
+    }
+}

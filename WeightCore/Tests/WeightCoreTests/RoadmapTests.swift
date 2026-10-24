@@ -57,6 +57,15 @@ struct RoadmapTests {
         #expect(!roadmap.hasReachedTarget(sevenDayAverage: 67.45))
     }
 
+    @Test("最終目標は 0.1kg に丸めて保存し、最終境界と到達判定も同じ値を使う")
+    func targetRounded() {
+        let r = Roadmap(startWeight: 123.5, startDay: start, targetWeight: 67.375, settings: s)   // 175cm × BMI22
+        #expect(r.targetWeight == 67.4)
+        #expect(r.stages.last?.boundaryWeight == 67.4)
+        #expect(r.hasReachedTarget(sevenDayAverage: 67.4))
+        #expect(r.stage(containing: 67.4) == nil)
+    }
+
     @Test("Codable で往復できる")
     func codable() throws {
         let data = try JSONEncoder().encode(roadmap)

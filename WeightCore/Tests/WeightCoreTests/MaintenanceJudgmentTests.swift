@@ -74,4 +74,34 @@ struct MaintenanceJudgmentTests {
             Issue.record("卒業しているはず")
         }
     }
+
+    @Test("84日目(経過84日)に28日目を満たせば卒業、85日目なら卒業せず exceededMaximum")
+    func graduationDeadline() {
+        // 経過57日から範囲内 → 28日目は経過84日
+        var onTime = Array(repeating: 114.0, count: 120)
+        for i in 63..<120 { onTime[i] = 111.0 }          // index 63 = 到達+57
+        // 7日平均が範囲内になるのは 114 が混ざらなくなってから: (6×114+111)/7=113.57 外、(5×114+2×111)/7=113.14 内
+        // → 範囲内は到達+58 から。28日目は到達+85 → 卒業できない
+        let late = dailyWeights(from: arrival.adding(days: -6), onTime)
+        if case .exceededMaximum(let n) = evaluate(through: day(2027, 2, 10), late) {
+            #expect(n >= 28)
+        } else {
+            Issue.record("経過85日で28日目を満たしても卒業しない")
+        }
+        // 1日早めると 28日目が経過84日 → 卒業
+        var early = Array(repeating: 114.0, count: 120)
+        for i in 62..<120 { early[i] = 111.0 }
+        let justInTime = dailyWeights(from: arrival.adding(days: -6), early)
+        #expect(evaluate(through: day(2027, 2, 10), justInTime) == .graduated(on: arrival.adding(days: 84)))
+    }
+
+    @Test("上限を超えた後に初めて28日連続になっても卒業しない")
+    func noGraduationAfterMax() {
+        var values = Array(repeating: 114.0, count: 140)
+        for i in 86..<140 { values[i] = 111.0 }   // 到達+80 から範囲内 → 28日目は到達+108
+        let w = dailyWeights(from: arrival.adding(days: -6), values)
+        if case .exceededMaximum = evaluate(through: arrival.adding(days: 120), w) {} else {
+            Issue.record("上限超過後の28日連続は exceededMaximum のまま")
+        }
+    }
 }

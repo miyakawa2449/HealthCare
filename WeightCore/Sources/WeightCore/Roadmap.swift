@@ -22,7 +22,9 @@ public struct Roadmap: Sendable, Equatable, Codable {
 
     /// 境界は開始体重に (1 − stageRatio) を丸めずに掛けて連鎖させ、各境界だけを 0.1kg に丸める。
     /// 目標を下回る境界が出たら目標で打ち切る。開始が目標以下ならステージなし。
+    /// 最終目標も 0.1kg に丸めて保存する(BMI から計算した 67.375 のような値も境界と同じ単位にする)。
     public init(startWeight: Double, startDay: CalendarDay, targetWeight: Double, settings: PlanSettings) {
+        let targetWeight = Weight.rounded(targetWeight)
         self.startWeight = startWeight
         self.startDay = startDay
         self.targetWeight = targetWeight
@@ -34,6 +36,10 @@ public struct Roadmap: Sendable, Equatable, Codable {
 
     /// 計画の見直しを採用したときの起点の取り直し。境界とマイルストーンは変えず、
     /// まだ到達していないステージの到達予定日だけを新しい起点から計算し直す。
+    ///
+    /// 前提: 減量中のステージで使う(計画見直しは減量中にだけ発動する)。維持期間中や
+    /// 維持卒業直後の再起点は、どの維持期間を到達予定日に含めるかが未決のため対象外
+    /// (docs/plan/02-core-logic/03-decisions.md #9)。
     public init(rebasing original: Roadmap, startWeight: Double, startDay: CalendarDay) {
         self = original
         self.startWeight = startWeight

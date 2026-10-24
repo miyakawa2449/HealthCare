@@ -112,6 +112,7 @@ public struct Roadmap: Sendable, Equatable, Codable {
 ```
 
 - 境界: `startWeight × (1 − stageRatio)^k` を丸めずに連鎖させ、各境界だけを `Weight.rounded` で丸める。`targetWeight` を下回る境界が出たらそこで `targetWeight` に置き換えて打ち切る。境界がちょうど `targetWeight` に一致したらそれが最終ステージ。
+- `targetWeight` は 0.1kg に丸めて保存する(BMI から計算した 67.375 も 67.4 になる)。
 - `startWeight <= targetWeight` のときは `stages` が空(計画を作れない)。
 - 到達予定日: ステージ k の減量日数 = `ceil(ln(boundary_k / boundary_{k−1}) / ln(1 − monthlyRate) × daysPerMonth)`。ステージ 2 以降は、前のステージの維持期間として `settings.assumedMaintenanceDays` を足す(03-decisions.md #1)。最終ステージの後には足さない。
 - 到達判定: `Weight.rounded(sevenDayAverage) <= boundaryWeight`。
@@ -151,7 +152,7 @@ public enum MaintenanceJudgment {
 
 - `arrivalDay` から `day` まで1日ずつ、その日の7日平均を `Weight.rounded` で丸め、`|avg − arrivalWeight| / arrivalWeight` を `Ratio.rounded` して `<= maintenanceBand` なら範囲内。
 - 範囲内の日が連続で `maintenanceMinDays`(28)に達した最初の日に `graduated`。範囲外の日、または7日平均が `nil` の日(03-decisions.md #7)で連続カウントを 0 に戻す。
-- 卒業しないまま `arrivalDay` からの経過日数が `maintenanceMaxDays`(84)を超えたら `exceededMaximum`。卒業条件の判定を先に行う(84日目までに卒業していればそちら)。
+- 卒業は到達日から `maintenanceMaxDays`(84)以内に限る。84日以内に卒業しなければ `exceededMaximum` になり、その後に28日連続を満たしても自動では卒業しない(次へ進むか維持を続けるかはユーザーが選ぶ)。連続日数は表示用に数え続ける。
 
 ## 8. 計画見直しの発動: `PlanReviewTrigger`
 
