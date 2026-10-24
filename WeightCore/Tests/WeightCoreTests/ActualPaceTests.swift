@@ -106,13 +106,30 @@ struct ActualPaceTests {
         #expect(pace(stage2, on: stage2Origin, w) == nil)
     }
 
-    @Test("ステージ開始直後(経過1日)は n = 1 で、30/1 乗で換算する")
-    func dayAfterStageStart() throws {
+    @Test("ステージ開始直後(経過1日、n = 1)は最低窓14日に満たないので nil")
+    func dayAfterStageStart() {
         let w = weights(origin: stage2Origin, thenOffset: 0, before: 110.9, nowOffset: 1, after: 110.8)
-        let p = try #require(pace(stage2, on: stage2Origin.adding(days: 1), w))
-        #expect(p.windowDays == 1)
-        // 窓が重なるので、期待値はデータの実際の7日平均から 30/1 乗で出す
-        #expect(abs(p.monthlyRate - expectedRate(w, origin: stage2Origin, windowStart: 0, end: 1)) < 1e-9)
+        #expect(pace(stage2, on: stage2Origin.adding(days: 1), w) == nil)
+    }
+
+    @Test("経過13日(n = 13)は nil、経過14日(n = 14)で初めて計算する(30/14 乗)")
+    func minimumWindow() throws {
+        let w13 = weights(origin: stage2Origin, thenOffset: 0, before: 110.9, nowOffset: 13, after: 109.5)
+        #expect(pace(stage2, on: stage2Origin.adding(days: 13), w13) == nil)
+        let w14 = weights(origin: stage2Origin, thenOffset: 0, before: 110.9, nowOffset: 14, after: 109.5)
+        let p = try #require(pace(stage2, on: stage2Origin.adding(days: 14), w14))
+        #expect(p.windowDays == 14)
+        #expect(abs(p.monthlyRate - expectedRate(w14, origin: stage2Origin, windowStart: 0, end: 14)) < 1e-9)
+    }
+
+    @Test("ステージ2で見直しを採用した直後も、再起点から14日たつまで nil")
+    func afterRebaseInStage2() throws {
+        let rebaseDay = stage2Origin.adding(days: 40)
+        let rebased = stage2.rebased(sevenDayAverage: 106.0, on: rebaseDay)!
+        let w13 = weights(origin: rebaseDay, thenOffset: 0, before: 106.0, nowOffset: 13, after: 105.0)
+        #expect(pace(rebased, on: rebaseDay.adding(days: 13), w13) == nil)
+        let w14 = weights(origin: rebaseDay, thenOffset: 0, before: 106.0, nowOffset: 14, after: 105.0)
+        #expect(try #require(pace(rebased, on: rebaseDay.adding(days: 14), w14)).windowDays == 14)
     }
 
     @Test("ステージの28日目(経過27日)は n = 27、29日目(経過28日)で初めて n = 28")
@@ -131,10 +148,10 @@ struct ActualPaceTests {
         #expect(try #require(pace(stage2, on: stage2Origin.adding(days: 29), w)).windowDays == 28)
     }
 
-    @Test("ステージ2以降に最初の1か月の除外はない(経過10日でも計算する)")
+    @Test("ステージ2以降に最初の1か月の除外はない(経過20日で計算する)")
     func noFirstMonthBlackoutInLaterStages() throws {
-        let w = weights(origin: stage2Origin, thenOffset: 0, before: 110.9, nowOffset: 10, after: 110.0)
-        #expect(try #require(pace(stage2, on: stage2Origin.adding(days: 10), w)).windowDays == 10)
+        let w = weights(origin: stage2Origin, thenOffset: 0, before: 110.9, nowOffset: 20, after: 110.0)
+        #expect(try #require(pace(stage2, on: stage2Origin.adding(days: 20), w)).windowDays == 20)
     }
 
     @Test("ステージ1で計画見直しを採用しても、窓の下限は計画の開始日 + 13日のまま(再起点で狭まらない)")

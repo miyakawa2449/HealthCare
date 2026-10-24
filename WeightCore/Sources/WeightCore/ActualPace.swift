@@ -5,7 +5,8 @@
 ///   さらに計画の開始日から最初の1か月(`initialPeriodDays` 未満)は判定しない。
 ///   どちらも計画の開始日が基準なので、ステージ1で計画見直しを採用して起点を取り直しても再発しない。
 /// - ステージ2以降: ステージの起点の日。
-/// 窓が28日に満たない間は 30/n 乗で月に換算する。
+/// 窓が28日に満たない間は 30/n 乗で月に換算する。ただし `actualPaceMinimumWindowDays`(14日)未満は判定しない
+/// (1日の揺れが拡大されるため)。ステージ1は窓が常に17日以上あるので影響しない。
 public struct ActualPace: Sendable, Equatable {
     /// 月あたりの減量率。増えていれば負。
     public var monthlyRate: Double
@@ -24,7 +25,7 @@ public struct ActualPace: Sendable, Equatable {
         }
         let windowStartDay = max(day.adding(days: -settings.actualPaceWindowDays), floorDay)
         let days = windowStartDay.days(until: day)
-        guard days > 0,
+        guard days >= settings.actualPaceMinimumWindowDays,
               let now = SevenDayAverage(endingOn: day, in: weights),
               let then = SevenDayAverage(endingOn: windowStartDay, in: weights)
         else { return nil }

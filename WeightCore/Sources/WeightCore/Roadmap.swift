@@ -58,6 +58,19 @@ public struct Roadmap: Sendable, Equatable, Codable {
         return .losing(stage: stage + 1, origin: StageOrigin(weight: sevenDayAverage, day: day))
     }
 
+    /// 維持期間中に、7日平均(丸め)が次のステージの境界以下なら次のステージ番号。維持モードと減量中は nil。
+    public func earlyArrival(phase: PlanPhase, sevenDayAverage: Double) -> Int? {
+        guard case .maintaining(let stage, _) = phase, isValid(stage: stage), stage < stages.count else { return nil }
+        return Weight.rounded(sevenDayAverage) <= stages[stage].boundaryWeight ? stage + 1 : nil
+    }
+
+    /// 早期到達を採用した日のフェーズ。次のステージの到達として扱い、その維持期間へ(次が最終なら維持モード)。
+    /// 早期到達が成立していなければ nil。予定日の更新は `rescheduled(from:)` で行う。
+    public func phaseOnEarlyArrival(from phase: PlanPhase, sevenDayAverage: Double, on day: CalendarDay) -> PlanPhase? {
+        guard let next = earlyArrival(phase: phase, sevenDayAverage: sevenDayAverage) else { return nil }
+        return phaseOnArrival(stage: next, sevenDayAverage: sevenDayAverage, on: day)
+    }
+
     private func isValid(stage: Int) -> Bool {
         (1...max(stages.count, 1)).contains(stage) && !stages.isEmpty
     }
