@@ -7,7 +7,7 @@
 | Xcode / Swift | Xcode 27.1、Swift 6.4、iOS SDK 27.1 |
 | シミュレーターのランタイム | iOS 18.1 / 18.6 / 26.1 / 26.2 / 26.4 / 26.5(27.x は未ダウンロード) |
 | シミュレーター端末 | iPhone 16 Pro が2台登録されている(名前指定だけでは一意にならない) |
-| XcodeGen | 未インストール(Homebrew に 2.46.0 あり) |
+| XcodeGen | 2.46.0 をインストール済み(2026-10-24) |
 | Homebrew | 7.0.9 |
 | 署名 | Apple Development の有効な証明書が1つ。Team ID は `VC9862P72J` |
 | リポジトリ | コミットなし。`.gitignore` なし。`docs/.DS_Store` が紛れ込んでいる |
