@@ -48,6 +48,13 @@ struct PlanSettingsTests {
         #expect(settings.daysPerMonth == 30)
     }
 
+    @Test("維持期間の仮定は60日、最初の1か月は30日、実績ペースの窓は14日目から")
+    func phase2Additions() {
+        #expect(settings.assumedMaintenanceDays == 60)
+        #expect(settings.initialPeriodDays == 30)
+        #expect(settings.actualPaceWindowStartFloor == 13)
+    }
+
     @Test("最終目標の初期値はBMI22")
     func defaultTargetBMI() {
         #expect(settings.defaultTargetBMI == 22)

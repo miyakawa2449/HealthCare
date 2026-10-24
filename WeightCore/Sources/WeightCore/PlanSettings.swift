@@ -2,7 +2,7 @@
 ///
 /// 値の根拠は AGENTS.md の「ドメインルール」。計算や判定のロジックはここに置かず、
 /// ロジック側がこの型を引数として受け取る。割合はすべて 1.0 = 100% で表す。
-public struct PlanSettings: Sendable, Equatable {
+public struct PlanSettings: Sendable, Equatable, Codable {
     /// 標準ペース(1か月あたりの減量割合)。その時点の7日平均に対する割合。
     public var monthlyRate: Double
     /// 1か月の日数。暦月ではなく固定値で日割りする。
@@ -40,6 +40,13 @@ public struct PlanSettings: Sendable, Equatable {
     /// 最終目標の初期値を決める BMI。
     public var defaultTargetBMI: Double
 
+    /// 到達予定日の計算で、各ステージの後に置くと仮定する維持期間の日数。
+    public var assumedMaintenanceDays: Int
+    /// 最初の1か月(この経過日数未満)は進み具合・実績ペース・計画見直しの判定をしない。
+    public var initialPeriodDays: Int
+    /// 実績ペースの窓の始まりを、この経過日数より前にしない(初期の水分減少を含めないため)。14日目 = 経過13日。
+    public var actualPaceWindowStartFloor: Int
+
     public init(
         monthlyRate: Double,
         daysPerMonth: Int,
@@ -55,7 +62,10 @@ public struct PlanSettings: Sendable, Equatable {
         progressBand: Double,
         reviewDeviation: Double,
         reviewWindowDays: Int,
-        defaultTargetBMI: Double
+        defaultTargetBMI: Double,
+        assumedMaintenanceDays: Int,
+        initialPeriodDays: Int,
+        actualPaceWindowStartFloor: Int
     ) {
         self.monthlyRate = monthlyRate
         self.daysPerMonth = daysPerMonth
@@ -72,6 +82,9 @@ public struct PlanSettings: Sendable, Equatable {
         self.reviewDeviation = reviewDeviation
         self.reviewWindowDays = reviewWindowDays
         self.defaultTargetBMI = defaultTargetBMI
+        self.assumedMaintenanceDays = assumedMaintenanceDays
+        self.initialPeriodDays = initialPeriodDays
+        self.actualPaceWindowStartFloor = actualPaceWindowStartFloor
     }
 
     /// AGENTS.md のドメインルールどおりの既定値。
@@ -90,6 +103,9 @@ public struct PlanSettings: Sendable, Equatable {
         progressBand: 0.005,
         reviewDeviation: 0.02,
         reviewWindowDays: 14,
-        defaultTargetBMI: 22
+        defaultTargetBMI: 22,
+        assumedMaintenanceDays: 60,
+        initialPeriodDays: 30,
+        actualPaceWindowStartFloor: 13
     )
 }
