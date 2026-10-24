@@ -72,16 +72,4 @@ struct RoadmapTests {
         let decoded = try JSONDecoder().decode(Roadmap.self, from: data)
         #expect(decoded == roadmap)
     }
-
-    @Test("見直しの採用で起点を取り直しても、境界は変えない")
-    func rebase() {
-        let rebased = Roadmap(rebasing: roadmap, startWeight: 118.0, startDay: day(2026, 11, 20))
-        #expect(rebased.stages.map(\.boundaryWeight) == [111.2, 100.0, 90.0, 81.0, 72.9, 67.4])
-        #expect(rebased.firstMilestoneWeight == 117.3)
-        #expect(rebased.startWeight == 118.0)
-        #expect(rebased.startDay == day(2026, 11, 20))
-        // ステージ1の到達予定は 118.0 → 111.2 を月2%で: ceil(ln(111.2/118.0)/ln(0.98)×30) = 89日
-        #expect(rebased.stages[0].estimatedArrival == day(2026, 11, 20).adding(days: 89))
-        #expect(rebased.stages[1].estimatedArrival == rebased.stages[0].estimatedArrival.adding(days: s.assumedMaintenanceDays + 158))
-    }
 }

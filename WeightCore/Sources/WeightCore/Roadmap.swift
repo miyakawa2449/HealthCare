@@ -34,24 +34,49 @@ public struct Roadmap: Sendable, Equatable, Codable {
         self.stages = Self.scheduled(stages, from: Weight.rounded(startWeight), on: startDay, settings: settings)
     }
 
-    /// 計画の見直しを採用したときの起点の取り直し。境界とマイルストーンは変えず、
-    /// まだ到達していないステージの到達予定日だけを新しい起点から計算し直す。
-    ///
-    /// 前提: 減量中のステージで使う(計画見直しは減量中にだけ発動する)。維持期間中や
-    /// 維持卒業直後の再起点は、どの維持期間を到達予定日に含めるかが未決のため対象外
-    /// (docs/plan/02-core-logic/03-decisions.md #9)。
-    public init(rebasing original: Roadmap, startWeight: Double, startDay: CalendarDay) {
-        self = original
-        self.startWeight = startWeight
-        self.startDay = startDay
-        let current = Weight.rounded(startWeight)
-        let reached = original.stages.prefix { current <= $0.boundaryWeight }
-        var remaining = Array(original.stages.dropFirst(reached.count))
-        if !remaining.isEmpty {
-            remaining[0].startWeight = current
-            remaining = Self.scheduled(remaining, from: current, on: startDay, settings: settings)
+    // MARK: フェーズの遷移
+
+    /// 最初のフェーズ: ステージ1の減量中。起点は計画の開始体重と開始日。
+    public var initialPhase: PlanPhase {
+        .losing(stage: 1, origin: StageOrigin(weight: startWeight, day: startDay))
+    }
+
+    /// ステージに到達した日のフェーズ。最終ステージなら維持モード、それ以外は維持期間。
+    public func phaseOnArrival(stage: Int, sevenDayAverage: Double, on day: CalendarDay) -> PlanPhase {
+        let arrival = StageOrigin(weight: sevenDayAverage, day: day)
+        return stage >= stages.count ? .maintenanceMode(arrival: arrival) : .maintaining(stage: stage, arrival: arrival)
+    }
+
+    /// 維持期間から次のステージへ進んだ日のフェーズ。その日の7日平均(丸め)と日付が次のステージの起点になる。
+    /// 維持期間中でなければ nil。
+    public func phaseOnAdvance(from phase: PlanPhase, sevenDayAverage: Double, on day: CalendarDay) -> PlanPhase? {
+        guard case .maintaining(let stage, let arrival) = phase else { return nil }
+        guard stage < stages.count else { return .maintenanceMode(arrival: arrival) }
+        return .losing(stage: stage + 1, origin: StageOrigin(weight: sevenDayAverage, day: day))
+    }
+
+    /// 到達予定日をフェーズから計算し直す。境界は変えない。
+    /// 減量中: そのステージの到達予定日を起点から計算し、以降は維持期間(仮定)を挟んで続ける。
+    /// 維持中: そのステージの到達予定日は実際の到達日にし、次のステージは到達日 + 維持期間(仮定)から。
+    /// 手前のステージの予定日は触らない。
+    public func rescheduled(from phase: PlanPhase) -> Roadmap {
+        var result = self
+        switch phase {
+        case .losing(let stage, let origin):
+            guard stage >= 1, stage <= stages.count else { return result }
+            let remaining = Self.scheduled(Array(stages[(stage - 1)...]), from: origin.weight, on: origin.day, settings: settings)
+            result.stages.replaceSubrange((stage - 1)..., with: remaining)
+        case .maintaining(let stage, let arrival):
+            guard stage >= 1, stage <= stages.count else { return result }
+            result.stages[stage - 1].estimatedArrival = arrival.day
+            if stage < stages.count {
+                let next = Self.scheduled(Array(stages[stage...]), from: arrival.weight, on: arrival.day.adding(days: settings.assumedMaintenanceDays), settings: settings, maintenanceBeforeFirst: false)
+                result.stages.replaceSubrange(stage..., with: next)
+            }
+        case .maintenanceMode:
+            break
         }
-        self.stages = Array(reached) + remaining
+        return result
     }
 
     /// 7日平均(丸めて比較)が今いるステージ。最終目標に到達していれば nil。
@@ -83,12 +108,12 @@ public struct Roadmap: Sendable, Equatable, Codable {
     }
 
     /// 到達予定日を順に埋める。2つ目以降は前のステージの維持期間(仮定)を足す。
-    private static func scheduled(_ stages: [Stage], from weight: Double, on day: CalendarDay, settings: PlanSettings) -> [Stage] {
+    private static func scheduled(_ stages: [Stage], from weight: Double, on day: CalendarDay, settings: PlanSettings, maintenanceBeforeFirst: Bool = false) -> [Stage] {
         var result = stages
         var cursorWeight = weight
         var cursorDay = day
         for i in result.indices {
-            if i > 0 { cursorDay = cursorDay.adding(days: settings.assumedMaintenanceDays) }
+            if i > 0 || maintenanceBeforeFirst { cursorDay = cursorDay.adding(days: settings.assumedMaintenanceDays) }
             let days = Pace.days(toReach: result[i].boundaryWeight / cursorWeight, monthlyRate: settings.monthlyRate, settings: settings)
             cursorDay = cursorDay.adding(days: days)
             result[i].estimatedArrival = cursorDay

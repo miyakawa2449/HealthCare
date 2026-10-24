@@ -104,4 +104,33 @@ struct MaintenanceJudgmentTests {
             Issue.record("上限超過後の28日連続は exceededMaximum のまま")
         }
     }
+
+    // MARK: 維持中に体重が戻った場合
+
+    @Test("範囲の上に戻って、また範囲内に戻れば数え直しで卒業できる")
+    func regressesThenReturns() {
+        var values = Array(repeating: 111.0, count: 90)
+        for i in 16..<30 { values[i] = 114.5 }   // 到達+10〜+23 に 114.5(+3%)。7日平均は +12〜+25 ごろ範囲外
+        let w = dailyWeights(from: arrival.adding(days: -6), values)
+        // 戻ったあと: 7日平均が範囲内に戻るのは 114.5 が窓から抜けてから(到達+26 ごろ)
+        if case .inProgress(let n) = evaluate(through: arrival.adding(days: 30), w) { #expect(n > 0 && n < 10) } else { Issue.record("数え直し中のはず") }
+        if case .graduated(let d) = evaluate(through: arrival.adding(days: 84), w) { #expect(d <= arrival.adding(days: 84)) } else { Issue.record("戻った後に28日続けば卒業") }
+    }
+
+    @Test("範囲の上に戻ったまま続けば、卒業せず 84日超で提案になる")
+    func staysRegressed() {
+        var values = Array(repeating: 111.0, count: 110)
+        for i in 16..<110 { values[i] = 115.0 }
+        let w = dailyWeights(from: arrival.adding(days: -6), values)
+        #expect(evaluate(through: arrival.adding(days: 84), w) == .inProgress(consecutiveDaysInBand: 0))
+        #expect(evaluate(through: arrival.adding(days: 85), w) == .exceededMaximum(consecutiveDaysInBand: 0))
+    }
+
+    @Test("範囲の下に抜けて減り続けても同じ扱い(範囲外として数え直し)")
+    func keepsLosing() {
+        var values = Array(repeating: 111.0, count: 40)
+        for i in 16..<40 { values[i] = 108.0 }   // −2.9%
+        let w = dailyWeights(from: arrival.adding(days: -6), values)
+        #expect(evaluate(through: arrival.adding(days: 30), w) == .inProgress(consecutiveDaysInBand: 0))
+    }
 }
