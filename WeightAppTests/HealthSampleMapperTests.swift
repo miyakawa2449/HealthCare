@@ -8,6 +8,14 @@ struct HealthSampleMapperTests {
     let healthPlanet: Set<String> = ["jp.co.tanita.healthplanet"]
     let at = ISO8601DateFormatter().date(from: "2026-10-17T23:00:00Z")!
 
+    @Test("既定の設定で、実機で確認した HealthPlanet の Bundle ID は healthPlanet、ヘルスケア本体は other")
+    func defaultSettingsRecognizeHealthPlanet() {
+        #expect(DataSourceSettings.healthPlanetBundleIDs == ["jp.co.tanita-thl.HealthPlanet"])
+        #expect(HealthSampleMapper.source(bundleIdentifier: "jp.co.tanita-thl.HealthPlanet") == .healthPlanet)
+        #expect(HealthSampleMapper.source(bundleIdentifier: "com.apple.Health") == .other)
+        #expect(HealthSampleMapper.source(bundleIdentifier: nil) == .other)
+    }
+
     @Test("Bundle ID の集合に含まれれば HealthPlanet、それ以外は other、未設定ならすべて other")
     func source() {
         #expect(HealthSampleMapper.source(bundleIdentifier: "jp.co.tanita.healthplanet", healthPlanetBundleIDs: healthPlanet) == .healthPlanet)

@@ -85,7 +85,7 @@ WeightApp.entitlements       App Group を追加
 ## 残っていること
 
 - main へのマージ(承認待ち)。
-- HealthPlanet の Bundle ID をコンソールの `[HealthKit] ... sources:` の出力から控え、`DataSourceSettings.healthPlanetBundleIDs` に入れる。
+- (済)HealthPlanet の Bundle ID は実機のコンソールで `jp.co.tanita-thl.HealthPlanet` と確認し、`DataSourceSettings.healthPlanetBundleIDs` に設定した(体重・体脂肪率とも同じ ID)。
 - 7日平均の日数下限は実機で使ってから決める。
 
 ## 次にやること

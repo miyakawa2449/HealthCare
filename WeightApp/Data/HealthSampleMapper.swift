@@ -2,10 +2,11 @@ import Foundation
 import HealthKit
 import WeightCore
 
-/// データ元の設定。HealthPlanet が HealthKit に書き込むときの Bundle ID は実機で確認してから入れる
-/// (デバッグビルドで `HealthKitStore` がコンソールに出力する)。未設定の間はすべて `.other` として扱う。
+/// データ元の設定。HealthPlanet が HealthKit に書き込むときの Bundle ID。
+/// 2026-10-24 に実機(デバッグビルドで `HealthKitStore` がコンソールに出力する一覧)で確認した値。
+/// 集合に含まれない ID はすべて `.other` として扱う。
 enum DataSourceSettings {
-    static let healthPlanetBundleIDs: Set<String> = []
+    static let healthPlanetBundleIDs: Set<String> = ["jp.co.tanita-thl.HealthPlanet"]
 }
 
 /// HealthKit のサンプルを WeightCore の値型に変換する。
