@@ -54,7 +54,7 @@ WeightApp.entitlements       App Group を追加
 | `xcodebuild test`(iPhone 17 Pro, iOS 26.5) | アプリ25件 + WeightCore 122件通過 |
 | シミュレーター起動 | HealthKit の権限ダイアログが出て、読み取りは体脂肪率と体重の2つだけ、確定した説明文が表示される |
 | Codex レビュー | 1回目 高1・中3・低1 → 修正。2回目 中1 → 修正。3回目 問題なし、マージ可 |
-| 実機 | 未確認(権限の許可後に読めること、HealthPlanet の Bundle ID、App Group の署名) |
+| 実機(iPhone 12 Pro) | 権限を許可後、7日平均と今日の測定が表示された(17:01)。App Group を含む署名も通った |
 
 ## 計画からの逸脱(意図的、設計書に追記済み)
 
@@ -78,10 +78,14 @@ WeightApp.entitlements       App Group を追加
 5. **維持中の一言のテストは日数の暗算で4件間違えた。** 7日平均が範囲外になるのは「外れた値が何日入ったか」で決まり、値によって(114.0 は6日、108.0 は4日)違う。期待値は Python で判定を再現して出した。
 6. **アプリ側のテストは「赤の確認」を省いた。** ビルドに1分かかるので、テストと実装をまとめて書いて1回で回した。WeightCore は赤を確認してから実装している。
 
+## 実機で起きたこと
+
+- 初回の実機ビルドで「No Account for Team "VC9862P72J"」「No profiles for 'com.miyakawa.weightapp'」が出た。Mac に署名証明書はあったが、Xcode の Accounts にその Team の Apple ID が入っていなかったのが原因。アカウントを追加して Team を選び直したら解消した(コードの変更なし)。
+
 ## 残っていること
 
 - main へのマージ(承認待ち)。
-- 実機確認: 権限の許可後に体重・体脂肪率が読めること、HealthPlanet の Bundle ID(コンソールの `[HealthKit] ... sources:` の出力)を `DataSourceSettings` に入れること、App Group の署名。
+- HealthPlanet の Bundle ID をコンソールの `[HealthKit] ... sources:` の出力から控え、`DataSourceSettings.healthPlanetBundleIDs` に入れる。
 - 7日平均の日数下限は実機で使ってから決める。
 
 ## 次にやること
