@@ -175,3 +175,48 @@
 | # | 重要度 | 対応 |
 | --- | --- | --- |
 | 1 | 中 | `refresh()` が `RefreshOutcome`(succeeded / failed / superseded)を返し、進行中の最新の取り直しを `latestRefresh` に持つ。`startPlan` は自分の取り直しが置き換えられても `awaitLatestRefresh()` で最新の結果を待ってから判断する。交差(保存後の取り直しが後から始まった取り直しに置き換えられ、そちらが成功)のテストを追加。アプリ70件通過。 |
+
+## 3回目(379a05d 時点)
+
+### Codex の回答(原文)
+
+## 指摘
+
+### 1. 重要度: 中
+
+該当ファイルと行: [HomeModel.swift](/Users/tsuyoshi/dev/HealthCare/WeightApp/App/HomeModel.swift:86)
+
+問題の内容:  
+`awaitLatestRefresh()` は、待っていた Task が `.succeeded` または `.failed` を返した直後、新しい `refresh()` が始まって `latestRefresh` を差し替えていても、古い結果をそのまま返す競合があります。
+
+`.superseded` は Task 内の69行目で世代を確認した時点までしか保証しません。Taskの完了から `await task.value` の継続がMainActorで再開するまでの間に、別の `refresh()` が始まる可能性があります。
+
+再現手順または根拠:
+
+1. `awaitLatestRefresh()` が最新Task Aを待つ。
+2. Aが69行目の世代確認を通過し、`.succeeded` で完了する。
+3. `awaitLatestRefresh()` の継続が再開する前に、フォアグラウンド復帰などからrefresh Bが始まり、`latestRefresh`がBに差し替わる。
+4. 88行目がAの結果を受け取り、89行目で`.superseded`ではないため、そのまま`.succeeded`を返す。
+5. Bがまだ進行中、または後で失敗しても、`startPlan`はAの成功を最新結果として扱う可能性がある。
+
+有限回の差し替えで87〜90行目のループ自体が終了しなくなる経路は見当たりません。継続的に外部からrefreshが開始され続ける場合は待ち続け得ますが、それは「常に最新を待つ」という仕様上の挙動です。
+
+修正案:  
+待ち始めた時点の世代番号も保持し、`task.value`を取得した後に、その世代が現在の`refreshGeneration`と一致するか再確認してください。不一致なら、結果が`.superseded`でなくても最新Taskを待ち直します。`latestRefresh`を「世代番号とTaskの組」にする方法でも対応できます。
+
+「Task Aが成功完了した後、Aの待機側が再開する前にTask Bが開始される」順序のテストも追加してください。
+
+## その他の確認結果
+
+- 2回目で指摘した「保存後のrefreshが進行中の別refreshに置き換えられる」経路は、追加テストで扱われた完了順については解消しています。
+- `Task { @MainActor [self] in … }`はクロージャーと捕捉した`self`の両方がMainActorに隔離されており、確認したコード上、Swift 6 strict concurrency違反は見当たりません。
+- `git diff --check main`では、レビュー記録内のMarkdown改行用末尾空白のみが報告されました。実装コードの空白エラーはありません。
+- 提示されたテスト成功結果は参照しました。読み取り専用環境で一時キャッシュを作成できないため、こちらでの再実行は未確認です。
+
+上記1件があるため、現時点では「マージ可」とは判断しません。
+
+### 対応
+
+| # | 重要度 | 対応 |
+| --- | --- | --- |
+| 1 | 中 | `awaitLatestRefresh()` は、待った Task が終わったあと「今も `latestRefresh` と同じ Task か」で判断し、違えば待ち直す(結果の種類では判断しない)。待っている間に新しい取り直しが始まる経路のテストを追加(アプリ71件)。「Task A の完了直後、待機側の再開前に B が始まる」という厳密な順序はテストで強制できないため未確認。コード上は同一性の確認で防いでいる。 |

@@ -252,3 +252,21 @@ extension HomeModelRefreshOrderTests {
         #expect(await model.awaitLatestRefresh() == .failed)
     }
 }
+
+extension HomeModelRefreshOrderTests {
+    @Test("awaitLatestRefresh は、待っている間に始まった新しい取り直しの結果を返す")
+    func awaitLatestFollowsNewerRefresh() async throws {
+        // A: 300ms で成功、B: 100ms で失敗。待ち始めは A、途中で B が始まり先に終わる
+        let health = DelayedHealthStore(weights: sample(123.5), delays: [.milliseconds(300), .milliseconds(100)], failures: [false, true])
+        let model = HomeModel(health: health, planStore: try makeStore())
+        let a = Task { await model.refresh() }
+        try await Task.sleep(for: .milliseconds(20))
+        let waiter = Task { await model.awaitLatestRefresh() }
+        try await Task.sleep(for: .milliseconds(20))
+        let b = Task { await model.refresh() }
+        #expect(await b.value == .failed)
+        #expect(await waiter.value == .failed)
+        #expect(await a.value == .superseded)
+        #expect(model.lastRefreshFailed)
+    }
+}

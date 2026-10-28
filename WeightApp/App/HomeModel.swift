@@ -83,10 +83,12 @@ final class HomeModel {
     }
 
     /// 最新の取り直しが終わるまで待ち、その結果を返す。途中で置き換えられたら新しい方を待ち直す。
+    /// 待った Task が終わってから再開するまでの間に別の取り直しが始まっていることがあるので、
+    /// 結果の種類ではなく「今も最新の Task か」で判断する。
     func awaitLatestRefresh() async -> RefreshOutcome {
         while let task = latestRefresh {
             let outcome = await task.value
-            if outcome != .superseded { return outcome }
+            if task == latestRefresh { return outcome }
         }
         return .failed
     }
