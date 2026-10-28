@@ -78,7 +78,7 @@
 ```
 
 - 7日平均が出ない(直近7日に記録がない)ときは、数値の代わりに「直近7日間に記録がありません」、その下に「HealthPlanet で同期すると、ここに表示されます」。グラフは履歴があれば出す。
-- グラフ(`WeightChart`、Swift Charts): 直近 `HomeSettings.chartDays`(28日。03-decisions.md #2)の `history` を使う。
+- グラフ(`WeightChart`、Swift Charts): 直近 `HomeSettings.historyDays`(28日。03-decisions.md #2)の `history` を使う。
   - 実線: 各日の7日平均(`DailyPoint.sevenDayAverage`)。nil の日は線を切る。
   - 点線: 各日の計画値(`DailyPoint.guideline`)。**今のフェーズの起点より前の日は nil にして描かない**(前のフェーズの計画値を今のフェーズの式で描くと嘘になるため)。維持期間・維持モードでは到達時体重の水平な点線。
   - 軸のラベル、目盛り、グリッドは出さない(ホームに目安の数値を出さない方針。concept.md「メイン画面では数字の目安を出さず、点線で重ねるだけ」)。y の範囲は実線と点線の最小・最大に少し余白を足す。
