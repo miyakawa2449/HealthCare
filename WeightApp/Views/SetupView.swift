@@ -7,25 +7,30 @@ struct SetupView: View {
     @State private var form: SetupFormState
     @State private var isSaving = false
     @State private var saveFailureText: String?
-    private let suggestion: HomeModel.StartWeightSuggestion
 
     init(model: HomeModel) {
         self.model = model
-        let suggestion = model.startWeightSuggestion
-        self.suggestion = suggestion
-        let suggested: Double? = switch suggestion {
-        case .sevenDayAverage(let kg), .latest(let kg): kg
-        case .none: nil
-        }
-        _form = State(initialValue: SetupFormState(suggestedStartWeight: suggested))
+        let today = model.summary?.day ?? CalendarDay(date: Date(), calendar: AppCalendar.tokyo)
+        _form = State(initialValue: SetupFormState(today: today, weights: model.recordedWeights))
     }
 
     private var startNote: String {
-        switch suggestion {
-        case .sevenDayAverage: "直近7日間の平均を入れてあります。違っていれば直してください。"
-        case .latest: "直近の記録を入れてあります。違っていれば直してください。"
+        switch form.startSuggestion {
+        case .sevenDayAverage: "開始日までの7日間の平均を入れてあります。違っていれば直してください。"
+        case .latest: "開始日までの直近の記録を入れてあります。違っていれば直してください。"
         case .none: "ヘルスケアに体重の記録がないので、いまの体重を入れてください。"
         }
+    }
+
+    private var startDayBinding: Binding<Date> {
+        Binding(
+            get: { form.startDay.startDate(in: AppCalendar.tokyo) },
+            set: { form.startDayChanged(CalendarDay(date: $0, calendar: AppCalendar.tokyo)) }
+        )
+    }
+
+    private var startDayRange: ClosedRange<Date> {
+        form.earliestStartDay.startDate(in: AppCalendar.tokyo)...form.today.startDate(in: AppCalendar.tokyo)
     }
 
     private var problemText: String? {
@@ -38,11 +43,11 @@ struct SetupView: View {
     }
 
     private var summaryText: String {
-        let today = DisplayFormat.dayWithWeekday(CalendarDay(date: Date(), calendar: AppCalendar.tokyo))
+        let day = DisplayFormat.dayWithWeekday(form.startDay)
         if let milestone = form.firstMilestoneWeight {
-            return "開始日は今日(\(today))。最初の区切りは \(DisplayFormat.kilograms(milestone)) です。"
+            return "開始日は \(day)。最初の区切りは \(DisplayFormat.kilograms(milestone)) です。"
         }
-        return "開始日は今日(\(today))。"
+        return "開始日は \(day)。"
     }
 
     var body: some View {
@@ -52,7 +57,17 @@ struct SetupView: View {
                     .font(.largeTitle.bold())
                     .padding(.top, 24)
 
-                field(title: "開始体重", text: $form.startText, unit: "kg", note: startNote, keyboard: .decimalPad)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("開始日").font(.subheadline).foregroundStyle(AppTheme.secondaryText)
+                    DatePicker("開始日", selection: startDayBinding, in: startDayRange, displayedComponents: .date)
+                        .labelsHidden()
+                        .environment(\.locale, Locale(identifier: "ja_JP"))
+                        .environment(\.timeZone, AppCalendar.tokyo.timeZone)
+                        .tint(AppTheme.accent)
+                    Text("最初の記録の日から今日までを選べます。").font(.footnote).foregroundStyle(AppTheme.secondaryText)
+                }
+                field(title: "開始体重", text: Binding(get: { form.startText }, set: { form.startChanged($0) }),
+                      unit: "kg", note: startNote, keyboard: .decimalPad)
                 field(title: "身長", text: Binding(get: { form.heightText }, set: { form.heightChanged($0) }),
                       unit: "cm", note: "最終目標の初期値を決めるためだけに使います。", keyboard: .numberPad)
                 field(title: "最終目標", text: Binding(get: { form.targetText }, set: { form.targetChanged($0) }),
@@ -109,7 +124,7 @@ struct SetupView: View {
         isSaving = true
         defer { isSaving = false }
         do {
-            try await model.startPlan(startWeight: start, targetWeight: target)
+            try await model.startPlan(startWeight: start, targetWeight: target, startDay: form.startDay)
             saveFailureText = nil
         } catch HomeModel.StartPlanError.savedButRefreshFailed, HomeModel.StartPlanError.alreadyStarted {
             // 計画は保存済み。上書きはせず、次に開いたときの取り直しに任せる
@@ -134,4 +149,8 @@ struct SetupView: View {
 
 #Preview("検証エラー(最終目標が開始体重以上)") {
     SetupView(model: PreviewData.setupModel(.invalid))
+}
+
+#Preview("記録が10日前から(開始日を過去に選べる)") {
+    SetupView(model: PreviewData.setupModel(.olderRecords))
 }

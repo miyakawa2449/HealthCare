@@ -38,7 +38,7 @@ enum PreviewData {
 
     // MARK: 初回設定
 
-    enum SetupState { case sevenDayAverage, latest, none, invalid }
+    enum SetupState { case sevenDayAverage, latest, none, invalid, olderRecords }
 
     static func setupModel(_ state: SetupState) -> HomeModel {
         let weights: [WeightSample] = switch state {
@@ -46,6 +46,7 @@ enum PreviewData {
         case .latest: samples(from: today.adding(days: -20), days: 3, start: 124.0, slopePerDay: 0)
         case .none: []
         case .invalid: samples(from: today.adding(days: -6), days: 7, start: 66.0, slopePerDay: 0)
+        case .olderRecords: samples(from: today.adding(days: -10), days: 11, start: 123.1, slopePerDay: -0.1, gap: 3..<5)
         }
         return model(health: MockHealthStore(weights: weights), store: tempStore())
     }

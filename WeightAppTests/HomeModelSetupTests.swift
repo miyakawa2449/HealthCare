@@ -270,3 +270,38 @@ extension HomeModelRefreshOrderTests {
         #expect(model.lastRefreshFailed)
     }
 }
+
+extension HomeModelSetupTests {
+    @Test("開始日を過去に指定すると、その日が計画の開始日と起点の日になる")
+    func startPlanWithPastStartDay() async throws {
+        let store = try makeStore()
+        let model = HomeModel(health: MockHealthStore(weights: samples(from: today.adding(days: -4), days: 5, 123.1)), planStore: store)
+        await model.refresh()
+        let startDay = today.adding(days: -4)
+        try await model.startPlan(startWeight: 123.1, targetWeight: 67.4, startDay: startDay)
+        let record = try #require(try store.load())
+        #expect(record.roadmap.startDay == startDay)
+        #expect(record.phase == .losing(stage: 1, origin: StageOrigin(weight: 123.1, day: startDay)))
+        let days = Pace.days(toReach: record.roadmap.stages[0].boundaryWeight / 123.1, monthlyRate: PlanSettings.default.monthlyRate, settings: .default)
+        #expect(record.roadmap.stages[0].estimatedArrival == startDay.adding(days: days))
+    }
+
+    @Test("開始日が今日より後なら投げて保存しない")
+    func startPlanFutureStartDay() async throws {
+        let store = try makeStore()
+        let model = HomeModel(health: MockHealthStore(weights: []), planStore: store)
+        await model.refresh()
+        await #expect(throws: HomeModel.StartPlanError.startDayInFuture) {
+            try await model.startPlan(startWeight: 123.1, targetWeight: 67.4, startDay: today.adding(days: 1))
+        }
+        #expect(try store.load() == nil)
+    }
+
+    @Test("開始体重の提案は日付ごとに変わる(7日平均 → 最新値 → なし)")
+    func suggestionByDay() {
+        let w = [DailyWeight(day: today.adding(days: -10), kilograms: 124.0, measuredAt: Date(), source: .healthPlanet)]
+        #expect(HomeModel.startWeightSuggestion(on: today.adding(days: -10), weights: w) == .sevenDayAverage(124.0))
+        #expect(HomeModel.startWeightSuggestion(on: today, weights: w) == .latest(124.0))
+        #expect(HomeModel.startWeightSuggestion(on: today.adding(days: -11), weights: w) == .none)
+    }
+}

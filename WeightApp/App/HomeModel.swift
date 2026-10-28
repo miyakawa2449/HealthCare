@@ -120,7 +120,7 @@ final class HomeModel {
 
     // MARK: 初回設定
 
-    enum StartWeightSuggestion: Equatable {
+    enum StartWeightSuggestion: Equatable, Sendable {
         /// 直近7日平均。
         case sevenDayAverage(Double)
         /// 直近7日に記録がなく、取得した範囲の最新の1件。
@@ -129,13 +129,20 @@ final class HomeModel {
         case none
     }
 
-    /// 初回設定に示す開始体重の初期値。履歴(直近 HomeSettings.historyDays 日)から決める。
+    /// 履歴(直近 HomeSettings.historyDays 日)にある1日の記録。初回設定の初期値と開始日の範囲に使う。
+    var recordedWeights: [DailyWeight] { summary?.history.compactMap(\.weight) ?? [] }
+
+    /// `day` に終わる7日平均があればそれ、なければその日までの最新値、それもなければ none。
+    nonisolated static func startWeightSuggestion(on day: CalendarDay, weights: [DailyWeight]) -> StartWeightSuggestion {
+        if let average = SevenDayAverage(endingOn: day, in: weights) { return .sevenDayAverage(average.kilograms) }
+        if let latest = InitialWeightSuggestion.suggest(on: day, weights: weights) { return .latest(latest) }
+        return .none
+    }
+
+    /// 初回設定に示す開始体重の初期値(今日の分)。
     var startWeightSuggestion: StartWeightSuggestion {
         guard let summary else { return .none }
-        let weights = summary.history.compactMap(\.weight)
-        if let average = summary.sevenDayAverage { return .sevenDayAverage(average.kilograms) }
-        if let latest = InitialWeightSuggestion.suggest(on: summary.day, weights: weights) { return .latest(latest) }
-        return .none
+        return Self.startWeightSuggestion(on: summary.day, weights: recordedWeights)
     }
 
     enum StartPlanError: Error, Equatable {
@@ -146,15 +153,19 @@ final class HomeModel {
         case alreadyStarted
         /// 計画は保存できたが、そのあとの取り直しに失敗した。次に開いたときに取り直す。
         case savedButRefreshFailed
+        /// 開始日が今日より後。
+        case startDayInFuture
     }
 
-    /// 計画を作って保存し、取り直す。開始日は今日(Asia/Tokyo)。
+    /// 計画を作って保存し、取り直す。開始日は指定がなければ今日(Asia/Tokyo)。今日より後は受け付けない。
     /// すでに計画があれば(保存済みなのに画面が初回設定のままの場合など)上書きせずに投げる。
-    func startPlan(startWeight: Double, targetWeight: Double) async throws {
+    func startPlan(startWeight: Double, targetWeight: Double, startDay: CalendarDay? = nil) async throws {
         if let error = PlanSetup.validate(startWeight: startWeight, targetWeight: targetWeight) { throw StartPlanError.invalid(error) }
         guard let planStore else { throw StartPlanError.unavailable }
+        let startDay = startDay ?? today
+        guard startDay <= today else { throw StartPlanError.startDayInFuture }
         guard try planStore.load() == nil else { throw StartPlanError.alreadyStarted }
-        let roadmap = Roadmap(startWeight: startWeight, startDay: today, targetWeight: targetWeight, settings: settings)
+        let roadmap = Roadmap(startWeight: startWeight, startDay: startDay, targetWeight: targetWeight, settings: settings)
         guard let phase = roadmap.initialPhase else { throw StartPlanError.invalid(.targetNotBelowStart) }
         try planStore.save(PlanRecord(roadmap: roadmap, phase: phase, originalRoadmap: nil, declinedEarlyArrivalOn: nil))
         // 自分の取り直しが別の取り直しに置き換えられても、最新の結果が出るまで待ってから判断する
