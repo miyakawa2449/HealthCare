@@ -7,7 +7,7 @@ struct WeightApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView(model: model)
+            RootView(model: model)
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             // 起動時とフォアグラウンド復帰時に取り直す(HealthPlanet を開いた後にこのアプリを開く運用のため)。
