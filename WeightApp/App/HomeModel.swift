@@ -129,8 +129,8 @@ final class HomeModel {
         case none
     }
 
-    /// 履歴(直近 HomeSettings.historyDays 日)にある1日の記録。初回設定の初期値と開始日の範囲に使う。
-    var recordedWeights: [DailyWeight] { summary?.history.compactMap(\.weight) ?? [] }
+    /// 取得した範囲にある1日の記録すべて(計画がなければ HealthKit の全履歴)。初回設定の初期値と開始日の範囲に使う。
+    var recordedWeights: [DailyWeight] { summary?.recordedWeights ?? [] }
 
     /// `day` に終わる7日平均があればそれ、なければその日までの最新値、それもなければ none。
     nonisolated static func startWeightSuggestion(on day: CalendarDay, weights: [DailyWeight]) -> StartWeightSuggestion {

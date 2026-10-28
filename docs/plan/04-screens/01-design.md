@@ -242,7 +242,7 @@ enum DisplayFormat {
 enum AppTheme { static let accent: Color; static let background: Color; static let card: Color; static let secondaryText: Color; static let track: Color }
 ```
 
-- `DailySummaryBuilder` は取得範囲を変えない(計画があれば開始日の6日前から、なければ直近30日)。`history` は取得した範囲のうち直近 `historyDays` 日だけを切り出す。
+- `DailySummaryBuilder` の取得範囲は、計画があれば開始日の6日前から、なければ全履歴(03-decisions.md #12 で「直近30日」から変更。初回設定で最初の記録の日まで開始日を遡れるように)。`history` は取得した範囲のうち直近 `historyDays` 日だけを切り出し、`recordedWeights` に取得した範囲の1日の記録すべてを持つ。
   計画の開始直後は取得範囲が短いので、`history` は「取得範囲の始まり」と「day − 27」の遅い方から始める。
 - 画面は `HomeModel` を見る `HomeScreen`(薄い)と、`DailySummary` と `PlanRecord` の一部を受け取る `HomeView`(純粋)に分ける。`#Preview` は AGENTS.md のとおり `MockHealthStore` と一時ディレクトリの `PlanStore` から `HomeModel` を作って渡す(`PreviewData` に状態ごとの作り方をまとめる)。
 

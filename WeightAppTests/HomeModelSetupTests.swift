@@ -305,3 +305,29 @@ extension HomeModelSetupTests {
         #expect(HomeModel.startWeightSuggestion(on: today.adding(days: -11), weights: w) == .none)
     }
 }
+
+extension HomeModelSetupTests {
+    @Test("最初の記録が60日前でも、初回設定の開始日はその日まで遡れる")
+    func earliestStartDayBeyondHistory() async throws {
+        let first = today.adding(days: -60)
+        let model = HomeModel(health: MockHealthStore(weights: samples(from: first, days: 61, 123.5)), planStore: try makeStore())
+        await model.refresh()
+        let form = SetupFormState(today: today, weights: model.recordedWeights)
+        #expect(form.earliestStartDay == first)
+        #expect(model.recordedWeights.count == 61)
+    }
+
+    @Test("28日表示の範囲より前の記録も、選んだ開始日の7日平均に使う")
+    func suggestionUsesRecordsBeforeHistoryWindow() async throws {
+        // 29日前 124.0、28日前 123.0、27日前 122.0。27日前を開始日に選ぶと3件の平均 123.0
+        var weights = samples(from: today.adding(days: -29), days: 1, 124.0)
+        weights += samples(from: today.adding(days: -28), days: 1, 123.0)
+        weights += samples(from: today.adding(days: -27), days: 1, 122.0)
+        let model = HomeModel(health: MockHealthStore(weights: weights), planStore: try makeStore())
+        await model.refresh()
+        var form = SetupFormState(today: today, weights: model.recordedWeights)
+        form.startDayChanged(today.adding(days: -27))
+        #expect(form.startSuggestion == .sevenDayAverage(123.0))
+        #expect(form.startText == "123.0")
+    }
+}

@@ -11,6 +11,8 @@ struct DailySummary: Equatable {
     var plan: PlanStatus?
     /// `day` を含む直近 HomeSettings.historyDays 日(古い順)。取得した範囲より前の日は作らない。
     var history: [DailyPoint]
+    /// 取得した範囲にある1日の体重すべて(古い順)。計画がなければ HealthKit の全履歴。初回設定の開始日の範囲と開始体重の初期値に使う。
+    var recordedWeights: [DailyWeight]
 }
 
 /// 履歴の1日分。グラフ(7日平均の実線、計画の点線)と記録カレンダーが使う。
@@ -48,14 +50,11 @@ struct DailySummaryBuilder: Sendable {
     let calendar: Calendar
     let settings: PlanSettings
 
-    /// 計画がなければ当日を含む直近30日、あれば開始日の6日前から取得する(03-decisions.md #8)。
-    static let daysWithoutPlan = 30
-
+    /// 計画があれば開始日の6日前から、なければ全履歴を取得する(初回設定で最初の記録の日まで開始日を遡れるように。04-screens/03-decisions.md #12)。
     func build(on day: CalendarDay) async throws -> DailySummary {
         let record = try planStore.load()
         let firstDay = record.map { $0.roadmap.startDay.adding(days: -(SevenDayAverage.windowDays - 1)) }
-            ?? day.adding(days: -(Self.daysWithoutPlan - 1))
-        let from = firstDay.startDate(in: calendar)
+        let from = firstDay?.startDate(in: calendar) ?? Date.distantPast
         let to = day.adding(days: 1).startDate(in: calendar)
 
         let weights = DailyWeightResolver.resolve(try await health.weightSamples(from: from, to: to), calendar: calendar)
@@ -68,8 +67,9 @@ struct DailySummaryBuilder: Sendable {
             todayBodyFat: bodyFats.first { $0.day == day },
             sevenDayAverage: average,
             plan: nil,
-            history: history(from: max(firstDay, day.adding(days: -(HomeSettings.historyDays - 1))), to: day,
-                             weights: weights, phase: record?.phase)
+            history: history(from: max(firstDay ?? day.adding(days: -(HomeSettings.historyDays - 1)), day.adding(days: -(HomeSettings.historyDays - 1))),
+                             to: day, weights: weights, phase: record?.phase),
+            recordedWeights: weights.filter { $0.day <= day }.sorted { $0.day < $1.day }
         )
         if let record {
             summary.plan = planStatus(record: record, on: day, weights: weights, average: average)

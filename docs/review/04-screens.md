@@ -236,3 +236,42 @@
 ### 対応
 
 指摘なし。マージ可。
+
+## 5回目(cb15622 時点。実機確認後の仕様追加「開始日を選べるようにする」)
+
+### Codex の回答(原文)
+
+## 指摘
+
+### 1. 重要度: 高
+
+該当ファイルと行: [HomeModel.swift](/Users/tsuyoshi/dev/HealthCare/WeightApp/App/HomeModel.swift:132)、[DailySummary.swift](/Users/tsuyoshi/dev/HealthCare/WeightApp/Data/DailySummary.swift:51)、[DailySummary.swift](/Users/tsuyoshi/dev/HealthCare/WeightApp/Data/DailySummary.swift:71)、[SetupFormState.swift](/Users/tsuyoshi/dev/HealthCare/WeightApp/App/SetupFormState.swift:26)
+
+問題の内容:  
+開始日の範囲と開始体重の計算に、HealthKitの全履歴ではなく、画面表示用に切り出された直近28日の `summary.history` を使っています。このため、承認済み仕様の「HealthKitにある最初の記録の日から今日まで」を満たしません。また、選択可能な最古日の7日平均も、窓の前半が欠けた値になる場合があります。
+
+再現手順または根拠:
+
+1. 計画なしではHealthKit取得自体が直近30日だけです。
+2. さらに `history` は `max(firstDay, today - 27日)` から生成されるため、`recordedWeights` に渡るのは最大でも直近28日です。
+3. 例えば最初の記録が60日前なら、開始日は今日しか選べず、画面には「ヘルスケアに体重の記録がない」と表示されます。
+4. 別例として、29日前・28日前・27日前にそれぞれ体重記録がある場合、選べる最古日は27日前になります。その日の7日平均には本来3件すべてを使うべきですが、`recordedWeights` には27日前の1件しか残らず、1件だけの平均が開始体重として提示されます。
+5. 計画保存後の `DailySummaryBuilder` は開始日の6日前から取得するため取得範囲自体は整合していますが、すでに保存された開始体重は、初回設定時の不完全な履歴から算出された値のままです。
+6. 追加テストはいずれも `SetupFormState` に必要な履歴を直接渡しており、`DailySummaryBuilder → summary.history → recordedWeights` で欠落する経路を検証していません。
+
+修正案:  
+グラフ・記録カレンダー用の28日間の `history` を、初回設定の履歴として流用しないでください。初回設定用に、少なくとも体重についてHealthKitの最初の記録から今日まで取得・日次化する経路を設け、その履歴から `earliestStartDay` と選択日の7日平均を求めてください。30日より前に最初の記録があるケースと、選択日の直前6日が28日表示範囲より前にあるケースを統合テストへ追加する必要があります。
+
+## その他の確認結果
+
+- DatePickerの値、範囲端、`Date ↔ CalendarDay` 変換はすべて `Asia/Tokyo` に統一されており、端末タイムゾーンによる日付ずれはコード上見当たりません。
+- 文言に評価ラベル、警告色、責める表現などのコンセプト違反は見当たりません。
+- 提示されたテスト結果は参照しましたが、読み取り専用環境のため再実行は未確認です。
+
+上記の仕様不一致があるため、現時点ではマージ可ではありません。
+
+### 対応
+
+| # | 重要度 | 対応 |
+| --- | --- | --- |
+| 1 | 高 | 計画がないときの取得範囲を「直近30日」から全履歴(`Date.distantPast` から)に変更。`DailySummary.recordedWeights`(取得範囲の1日の記録すべて)を足し、初回設定はこれを使う(グラフ用の28日の `history` は流用しない)。最初の記録が60日前のケースと、28日表示より前の記録を選んだ開始日の7日平均に使うケースを `HomeModel` 経由の統合テストに追加(アプリ79件)。設計書と決定事項に追記。 |
