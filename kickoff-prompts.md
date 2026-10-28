@@ -56,6 +56,24 @@ AGENTS.md、CLAUDE.md、docs/concept.md、docs/design/ を読んでください�
 
 ---
 
+## 2-b. Claude Code:画面フェーズの計画(フェーズ4以降)
+
+```
+AGENTS.md、CLAUDE.md、docs/concept.md、docs/design/、docs/plan/README.md を読んでください。
+次はフェーズ<N>(<フェーズ名>)です。docs/plan/0<N>-<name>/ に README・設計・テスト項目・決定事項の形で計画を立ててください。コードはまだ書かないでください。
+
+計画には次を含めてください:
+1. 作る画面と、画面ごとの状態の一覧(データなし、減量中、維持期間、維持モード、カードが出ている状態など)
+2. 状態ごとの #Preview の用意の仕方。Preview に表示用の状態を渡す入口(HealthKit の取り直しを待たずに表示できる形)と、Preview 用のサンプルデータ・一時フォルダの PlanStore をどこに置くか
+3. MockHealthStore と Preview 用のデータをリリースビルドから外すか(#if DEBUG で囲むなど)。推奨案と理由を添えてください
+4. 新しく足す文言の一覧(コンセプトの言葉づかいに合わせる)
+5. 実機で確認してほしいこと
+
+ファイルの追加は xcodegen generate で反映し、.xcodeproj や Xcode の設定画面は触らないでください。
+```
+
+---
+
 ## 3. Codex:レビュー依頼(Claude Codeの作業のあと)
 
 ```

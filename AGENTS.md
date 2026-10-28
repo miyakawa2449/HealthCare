@@ -36,6 +36,8 @@
 - HealthKit の権限ダイアログに出す説明文(Info.plist の `NSHealthShareUsageDescription`)は次の文言で確定:「体重と体脂肪率を Apple ヘルスケアから読み取り、7日平均とレポートの作成に使います。データは外部のサーバーに送信しません。」
 - **ウィジェット**:後のフェーズで追加する。
 - プロジェクトファイルはXcodeGen(`project.yml`)で生成する。`.xcodeproj` / `.pbxproj` を直接編集しない。生成物はコミットしない。
+  - Xcode の画面や Xcode 内のエージェント(Claude Agent、Codex)から、ビルド設定・Capability・ターゲット・スキームを変えない。`.pbxproj` にだけ書かれ、次の `xcodegen generate` で消えるため。変更は `project.yml` と `WeightApp/WeightApp.entitlements` に書き、再生成する。
+  - Swift ファイルやリソースを追加・削除・移動したら `xcodegen generate` を実行する(ソースはフォルダ単位で指定しているので、`project.yml` の編集は要らない)。
 
 ## ドメインルール(WeightCoreで実装する)
 
@@ -84,6 +86,8 @@ concept.md にあり、まだ実装対象になっていないもの。
 - `docs/design/` の画面デザインにある数値は見た目の例示として扱い、テストの期待値には使わない。
 - 作業の終わりに、WeightCoreは `swift test`、アプリは `xcodebuild` のビルドとテストを通す。
 - ブランチは作業単位で切り、コミットは小さく分ける。
+- 画面(SwiftUI の View)ごとに `#Preview` を用意する。データは `HealthStore` のモック経由で渡し、HealthKit や実データに頼らない。表示が変わる状態(データなし、減量中、維持期間、維持モード、カードが出ている状態など)はそれぞれ別の `#Preview` にする。
+- Preview に出す体重などの数値は見た目の確認用で、テストの期待値には使わない。
 
 ## Codex(検証担当)へ
 
