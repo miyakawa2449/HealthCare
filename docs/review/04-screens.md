@@ -128,3 +128,50 @@
 | 3 | 中 | `refresh()` に世代番号を持たせ、最新の要求だけが `summary` / `lastRefreshFailed` / `hasRefreshed` を反映する。遅い古い成功・遅い古い失敗のテストを `DelayedHealthStore` で追加。 |
 | 4 | 中 | `ProgressBar` を `accessibilityHidden(true)` にして割合を読み上げない。`WeightChart` は `accessibilityElement(children: .ignore)` で各点の値(計画の数値を含む)を公開しない。 |
 | 5 | 低 | 計画値が1点だけのとき `PointMark` を打つ。 |
+
+## 2回目(7b1ba56 時点)
+
+### Codex の回答(原文)
+
+## 指摘
+
+### 1. 重要度: 中
+
+該当ファイルと行: [HomeModel.swift](/Users/tsuyoshi/dev/HealthCare/WeightApp/App/HomeModel.swift:128)、[HomeModel.swift](/Users/tsuyoshi/dev/HealthCare/WeightApp/App/HomeModel.swift:66)
+
+問題の内容:  
+`startPlan` 内の `refresh()` が、後から始まった `refresh()` によって破棄された場合を失敗として扱ってしまいます。破棄された要求自体が成功していても、古い `summary` が計画なしのままなら `savedButRefreshFailed` が投げられます。
+
+再現手順または根拠:
+
+1. 計画なしの初回取得を完了し、`summary.plan == nil` の設定画面を出す。
+2. `startPlan` を実行し、保存後の refresh A を途中で待機させる。
+3. フォアグラウンド復帰などで refresh B を開始し、Bを待機させる。
+4. Aを成功させる。
+5. Aは66行目で世代が古いとして破棄される。
+6. `startPlan` は128行目から戻るが、Bは未完了なので `summary` は計画なしのまま。129行目で `savedButRefreshFailed` を投げる。
+7. HealthKit読み取りは失敗していないのに、設定画面には「ヘルスケアから体重を読み取れなかった」と表示される。
+
+現在の追加テストは「新しい要求が先に完了した後、古い要求が完了する」順序のみで、この交差は未確認です。
+
+修正案:  
+`refresh()` から適用・失敗・別世代に置き換えられたことを判別できる結果を返し、置き換えられた場合は最新世代の完了を待ってください。あるいは進行中の最新refreshを共有し、`startPlan` がそれを待つ方式にしてください。`savedButRefreshFailed` は、最新の再取得が実際に失敗した場合だけ投げるのが適切です。
+
+## そのほかの確認結果
+
+- `.notFinite` と `.notNumber` の写像は前回指摘 #1 を解消しています。
+- `alreadyStarted` により、保存済み計画を初回設定から上書きする問題は解消しています。
+- `hasRefreshed` は最新世代だけで立つため、古い要求の結果で初回画面を振り分ける穴は見当たりません。最新要求の完了までは `.loading` が維持されます。
+- 古い成功・古い失敗が最新状態を上書きしない処理は正しく実装されています。
+- ProgressBar、グラフのアクセシビリティ、計画が1点のときの表示は前回指摘を解消しています。
+- 新しい文言は責める表現や評価ラベルを含まず、コンセプト上の問題は見当たりません。
+- 前回「問題なし」としたコンセプト・表示・日付・丸めの観点に、今回の修正による副作用は見当たりません。
+- 提示されたテスト結果は参照しましたが、読み取り専用環境のため再実行は未確認です。
+
+上記1件があるため、現時点では「マージ可」とは判断しません。
+
+### 対応
+
+| # | 重要度 | 対応 |
+| --- | --- | --- |
+| 1 | 中 | `refresh()` が `RefreshOutcome`(succeeded / failed / superseded)を返し、進行中の最新の取り直しを `latestRefresh` に持つ。`startPlan` は自分の取り直しが置き換えられても `awaitLatestRefresh()` で最新の結果を待ってから判断する。交差(保存後の取り直しが後から始まった取り直しに置き換えられ、そちらが成功)のテストを追加。アプリ70件通過。 |

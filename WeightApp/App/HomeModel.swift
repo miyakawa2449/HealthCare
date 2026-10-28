@@ -44,33 +44,63 @@ final class HomeModel {
 
     private var today: CalendarDay { CalendarDay(date: Date(), calendar: calendar) }
 
+    enum RefreshOutcome: Equatable {
+        /// 取り直せて、状態に反映した。
+        case succeeded
+        /// 取り直せなかった(前回の値を残す)。利用不可のときもこれ。
+        case failed
+        /// 後から始まった取り直しに置き換えられ、結果を捨てた。最新の結果は `awaitLatestRefresh()` で待つ。
+        case superseded
+    }
+
     /// 取り直しの世代。起動時・復帰時・初回設定からの呼び出しが重なったとき、最新の要求だけが状態を反映する。
     private var refreshGeneration = 0
+    /// 進行中(または直近)の取り直し。置き換えられた呼び出し元はこれを待てば最新の結果を得られる。
+    private var latestRefresh: Task<RefreshOutcome, Never>?
 
-    func refresh() async {
-        guard let builder else { return }
+    @discardableResult
+    func refresh() async -> RefreshOutcome {
+        guard let builder else { return .failed }
         refreshGeneration += 1
         let generation = refreshGeneration
-        let result: Result<DailySummary, any Error>
+        let task = Task<RefreshOutcome, Never> { @MainActor [self] in
+            let result = await fetch(with: builder)
+            // 後から始まった取り直しが先に終わっていたら、古い結果で上書きしない
+            guard generation == refreshGeneration else { return .superseded }
+            hasRefreshed = true
+            switch result {
+            case .success(let built):
+                summary = built
+                lastRefreshFailed = false
+                return .succeeded
+            case .failure:
+                lastRefreshFailed = true
+                return .failed
+            }
+        }
+        latestRefresh = task
+        return await task.value
+    }
+
+    /// 最新の取り直しが終わるまで待ち、その結果を返す。途中で置き換えられたら新しい方を待ち直す。
+    func awaitLatestRefresh() async -> RefreshOutcome {
+        while let task = latestRefresh {
+            let outcome = await task.value
+            if outcome != .superseded { return outcome }
+        }
+        return .failed
+    }
+
+    private func fetch(with builder: DailySummaryBuilder) async -> Result<DailySummary, any Error> {
         do {
             try await health.requestReadAuthorization()
             var built = try await builder.build(on: today)
             if try recordFirstMilestoneIfReached(built) {
                 built = try await builder.build(on: built.day)
             }
-            result = .success(built)
+            return .success(built)
         } catch {
-            result = .failure(error)
-        }
-        // 後から始まった取り直しが先に終わっていたら、古い結果で上書きしない
-        guard generation == refreshGeneration else { return }
-        hasRefreshed = true
-        switch result {
-        case .success(let built):
-            summary = built
-            lastRefreshFailed = false
-        case .failure:
-            lastRefreshFailed = true
+            return .failure(error)
         }
     }
 
@@ -125,7 +155,8 @@ final class HomeModel {
         let roadmap = Roadmap(startWeight: startWeight, startDay: today, targetWeight: targetWeight, settings: settings)
         guard let phase = roadmap.initialPhase else { throw StartPlanError.invalid(.targetNotBelowStart) }
         try planStore.save(PlanRecord(roadmap: roadmap, phase: phase, originalRoadmap: nil, declinedEarlyArrivalOn: nil))
+        // 自分の取り直しが別の取り直しに置き換えられても、最新の結果が出るまで待ってから判断する
         await refresh()
-        if summary?.plan == nil { throw StartPlanError.savedButRefreshFailed }
+        if await awaitLatestRefresh() != .succeeded || summary?.plan == nil { throw StartPlanError.savedButRefreshFailed }
     }
 }

@@ -214,3 +214,41 @@ struct HomeModelRefreshOrderTests {
         #expect(RootRoute.route(for: model) == .home)
     }
 }
+
+extension HomeModelRefreshOrderTests {
+    @Test("保存後の取り直しが別の取り直しに置き換えられても、最新の結果が成功なら失敗にしない")
+    func startPlanSupersededBySuccessfulRefresh() async throws {
+        let store = try makeStore()
+        // 1回目: 初回取得(即)、2回目: startPlan の取り直し(300ms)、3回目: 復帰時の取り直し(100ms)
+        let health = DelayedHealthStore(weights: sample(123.5), delays: [.zero, .milliseconds(300), .milliseconds(100)])
+        let model = HomeModel(health: health, planStore: store)
+        await model.refresh()
+        #expect(RootRoute.route(for: model) == .setup)
+
+        let starting = Task { try await model.startPlan(startWeight: 123.5, targetWeight: 67.4) }
+        try await Task.sleep(for: .milliseconds(50))
+        let outcome = await model.refresh()          // 後から始まって先に終わる
+        #expect(outcome == .succeeded)
+        try await starting.value                     // 投げない
+        #expect(RootRoute.route(for: model) == .home)
+        #expect(model.summary?.plan?.stageNumber == 1)
+    }
+
+    @Test("refresh の戻り値: 置き換えられた古い要求は superseded、最新は succeeded")
+    func outcomes() async throws {
+        let health = DelayedHealthStore(weights: sample(123.5), delays: [.milliseconds(300), .zero])
+        let model = HomeModel(health: health, planStore: try makeStore())
+        let first = Task { await model.refresh() }
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await model.refresh() == .succeeded)
+        #expect(await first.value == .superseded)
+        #expect(await model.awaitLatestRefresh() == .succeeded)
+    }
+
+    @Test("利用不可なら failed")
+    func unavailableOutcome() async {
+        let model = HomeModel(health: MockHealthStore(weights: []), planStore: nil)
+        #expect(await model.refresh() == .failed)
+        #expect(await model.awaitLatestRefresh() == .failed)
+    }
+}
