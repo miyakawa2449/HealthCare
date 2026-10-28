@@ -74,3 +74,26 @@ struct PlanStoreTests {
         #expect(throws: PlanStoreError.unsupportedSchemaVersion(2)) { try store.load() }
     }
 }
+
+extension PlanStoreTests {
+    @Test("最初の区切りの到達日は往復で等しい")
+    func firstMilestoneRoundTrip() throws {
+        let store = try makeStore()
+        var r = record
+        r.firstMilestoneReachedOn = CalendarDay(year: 2027, month: 1, day: 3)
+        try store.save(r)
+        #expect(try store.load()?.firstMilestoneReachedOn == CalendarDay(year: 2027, month: 1, day: 3))
+    }
+
+    @Test("項目のない既存の JSON は到達日 nil として読める(schemaVersion は 1 のまま)")
+    func firstMilestoneAbsent() throws {
+        let store = try makeStore()
+        try store.save(record)
+        var json = try JSONSerialization.jsonObject(with: Data(contentsOf: store.fileURL)) as! [String: Any]
+        json["firstMilestoneReachedOn"] = nil
+        try JSONSerialization.data(withJSONObject: json).write(to: store.fileURL)
+        let loaded = try #require(try store.load())
+        #expect(loaded.firstMilestoneReachedOn == nil)
+        #expect(loaded.schemaVersion == 1)
+    }
+}

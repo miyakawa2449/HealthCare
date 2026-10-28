@@ -22,6 +22,8 @@ actor MockHealthStore: HealthStore {
     var failure: (any Error)?
 
     func setFailure(_ error: (any Error)?) { failure = error }
+    /// テストと Preview で、取得できる値を差し替える。
+    func replaceWeights(_ weights: [WeightSample]) { self.weights = weights }
 
     init(weights: [WeightSample], bodyFats: [BodyFatSample] = []) {
         self.weights = weights

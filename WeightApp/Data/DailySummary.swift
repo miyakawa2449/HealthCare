@@ -9,11 +9,27 @@ struct DailySummary: Equatable {
     var sevenDayAverage: SevenDayAverage?
     /// 計画がなければ nil。
     var plan: PlanStatus?
+    /// `day` を含む直近 HomeSettings.historyDays 日(古い順)。取得した範囲より前の日は作らない。
+    var history: [DailyPoint]
+}
+
+/// 履歴の1日分。グラフ(7日平均の実線、計画の点線)と記録カレンダーが使う。
+struct DailyPoint: Equatable {
+    var day: CalendarDay
+    /// その日の記録。なければ nil(カレンダーの印に使う)。
+    var weight: DailyWeight?
+    /// その日に終わる窓の7日平均。出なければ nil。
+    var sevenDayAverage: Double?
+    /// その日の計画値。計画がない、または今のフェーズの起点より前の日は nil(前のフェーズの計画値を今の式で描かないため)。
+    var guideline: Double?
 }
 
 /// 計画に関する判定のまとめ。
 struct PlanStatus: Equatable {
+    var roadmap: Roadmap
     var phase: PlanPhase
+    /// 最初の区切りに到達した日(保存値)。ステージ1で nil なら「最初の区切り」をめざしている表示になる。
+    var firstMilestoneReachedOn: CalendarDay?
     /// 画面に出すステージ番号。フェーズの番号で、体重から逆算しない。維持モードは nil。
     var stageNumber: Int?
     var guideline: Double
@@ -51,12 +67,25 @@ struct DailySummaryBuilder: Sendable {
             todayWeight: weights.first { $0.day == day },
             todayBodyFat: bodyFats.first { $0.day == day },
             sevenDayAverage: average,
-            plan: nil
+            plan: nil,
+            history: history(from: max(firstDay, day.adding(days: -(HomeSettings.historyDays - 1))), to: day,
+                             weights: weights, phase: record?.phase)
         )
         if let record {
             summary.plan = planStatus(record: record, on: day, weights: weights, average: average)
         }
         return summary
+    }
+
+    private func history(from: CalendarDay, to: CalendarDay, weights: [DailyWeight], phase: PlanPhase?) -> [DailyPoint] {
+        let byDay = Dictionary(weights.map { ($0.day, $0) }, uniquingKeysWith: { first, _ in first })
+        return SevenDayAverage.series(from: from, to: to, in: weights).map { point in
+            var guideline: Double?
+            if let phase, point.day >= phase.origin.day {
+                guideline = Guideline.expectedWeight(phase: phase, on: point.day, settings: settings)
+            }
+            return DailyPoint(day: point.day, weight: byDay[point.day], sevenDayAverage: point.average?.kilograms, guideline: guideline)
+        }
     }
 
     private func planStatus(record: PlanRecord, on day: CalendarDay, weights: [DailyWeight], average: SevenDayAverage?) -> PlanStatus {
@@ -68,7 +97,9 @@ struct DailySummaryBuilder: Sendable {
         case .maintenanceMode: stageNumber = nil
         }
         var status = PlanStatus(
+            roadmap: roadmap,
             phase: phase,
+            firstMilestoneReachedOn: record.firstMilestoneReachedOn,
             stageNumber: stageNumber,
             guideline: Guideline.expectedWeight(phase: phase, on: day, settings: settings),
             progress: nil, actualPace: nil, maintenance: nil, maintenanceNotice: nil,
