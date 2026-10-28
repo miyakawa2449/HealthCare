@@ -275,3 +275,40 @@
 | # | 重要度 | 対応 |
 | --- | --- | --- |
 | 1 | 高 | 計画がないときの取得範囲を「直近30日」から全履歴(`Date.distantPast` から)に変更。`DailySummary.recordedWeights`(取得範囲の1日の記録すべて)を足し、初回設定はこれを使う(グラフ用の28日の `history` は流用しない)。最初の記録が60日前のケースと、28日表示より前の記録を選んだ開始日の7日平均に使うケースを `HomeModel` 経由の統合テストに追加(アプリ79件)。設計書と決定事項に追記。 |
+
+## 6回目(e009628 時点)
+
+### Codex の回答(原文)
+
+指摘はありません。5回目の指摘は解消しています。
+
+## 確認結果
+
+- [DailySummary.swift](/Users/tsuyoshi/dev/HealthCare/WeightApp/Data/DailySummary.swift:57) で、計画がない場合は `Date.distantPast` から取得しています。
+- [DailySummary.swift](/Users/tsuyoshi/dev/HealthCare/WeightApp/Data/DailySummary.swift:72) の `recordedWeights` は、当日までの日次体重を古い順で保持しています。
+- [HomeModel.swift](/Users/tsuyoshi/dev/HealthCare/WeightApp/App/HomeModel.swift:133) は `summary.recordedWeights` を初回設定へ渡しており、28日表示用の `history` との混同は解消しています。
+- 最初の記録が60日前のケースと、28日表示範囲より前の記録を7日平均に含めるケースが、`HomeModel` 経由でテストされています。
+
+## `Date.distantPast` について
+
+問題は確認できませんでした。
+
+Apple公式ドキュメントにも、開始日が得られない場合に `.distantPast` を使い、`.strictStartDate` で `HKQuery.predicateForSamples` を作る例が掲載されています。[Apple: Authorizing access to health data](https://developer.apple.com/documentation/healthkit/authorizing-access-to-health-data?changes=__4_1&language=objc)
+
+`.strictStartDate` は、サンプルの開始日時が指定期間内にあることを要求する指定なので、現在の「`distantPast` 以上、翌日未満」という条件とも整合します。[Apple: strictStartDate](https://developer.apple.com/documentation/healthkit/hkqueryoptions/strictstartdate)
+
+実機でこの値を使ったクエリの実行は未確認です。
+
+## 全履歴取得の影響
+
+計画がない間の各 `refresh()` では、体重だけでなく体脂肪率も `HKObjectQueryNoLimit` で全件取得し、開始日時順にソートします。そのため、処理時間と一時メモリ使用量は保存サンプル数に比例します。起動時やフォアグラウンド復帰時にも再取得されます。
+
+ただし、対象データは通常低頻度で、計画保存後は開始日の6日前以降へ範囲が限定されます。現時点で仕様不一致や具体的な性能障害とは判断しません。大量履歴を入れた実機での応答時間・メモリ使用量は未確認です。
+
+読み取り専用環境のため、提示されたアプリ79件・WeightCore 139件のテスト成功は再実行できていません。
+
+**マージ可です。**
+
+### 対応
+
+指摘なし。マージ可。`Date.distantPast` を使ったクエリと、大量履歴での応答時間は実機で未確認(計画を保存した後は開始日の6日前からに限定される)。
