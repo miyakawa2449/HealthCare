@@ -33,14 +33,25 @@ struct DailySummaryBuilderTests {
         #expect(s.plan == nil)
     }
 
-    @Test("計画がなければ直近30日を取得する")
+    @Test("計画がなければ全履歴を取得する(初回設定で最初の記録の日まで遡れるように)")
     func fetchRangeWithoutPlan() async throws {
         let health = MockHealthStore(weights: [])
         let builder = DailySummaryBuilder(health: health, planStore: try makeStore(), calendar: cal, settings: .default)
         _ = try await builder.build(on: start)
         let range = try #require(await health.requestedRanges.first)
-        #expect(range.from == start.adding(days: -29).startDate(in: cal))   // 当日を含む30日
+        #expect(range.from == Date.distantPast)
         #expect(range.to == start.adding(days: 1).startDate(in: cal))
+    }
+
+    @Test("計画なし: recordedWeights は全履歴(古い順)、history は直近28日だけ")
+    func recordedWeightsWithoutPlan() async throws {
+        let health = MockHealthStore(weights: samples(from: start.adding(days: -60), days: 61, 123.5))
+        let builder = DailySummaryBuilder(health: health, planStore: try makeStore(), calendar: cal, settings: .default)
+        let s = try await builder.build(on: start)
+        #expect(s.recordedWeights.count == 61)
+        #expect(s.recordedWeights.first?.day == start.adding(days: -60))
+        #expect(s.recordedWeights.last?.day == start)
+        #expect(s.history.count == HomeSettings.historyDays)
     }
 
     @Test("維持期間の85日目: 直近7日の体重がなくても exceededMaximum のカードの判定は出る")

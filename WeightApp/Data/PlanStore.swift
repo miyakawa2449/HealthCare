@@ -12,12 +12,17 @@ struct PlanRecord: Codable, Equatable {
     var originalRoadmap: Roadmap?
     /// 早期到達の提案を断った日。その日から earlyArrivalRetryDays 後に再提案する。
     var declinedEarlyArrivalOn: CalendarDay?
+    /// 最初の区切り(5%)に到達した日。到達後は戻らない。
+    /// 項目の追加だけなので schemaVersion は 1 のまま(項目のない JSON は nil として読める)。
+    var firstMilestoneReachedOn: CalendarDay?
 
-    init(roadmap: Roadmap, phase: PlanPhase, originalRoadmap: Roadmap?, declinedEarlyArrivalOn: CalendarDay?) {
+    init(roadmap: Roadmap, phase: PlanPhase, originalRoadmap: Roadmap?, declinedEarlyArrivalOn: CalendarDay?,
+         firstMilestoneReachedOn: CalendarDay? = nil) {
         self.roadmap = roadmap
         self.phase = phase
         self.originalRoadmap = originalRoadmap
         self.declinedEarlyArrivalOn = declinedEarlyArrivalOn
+        self.firstMilestoneReachedOn = firstMilestoneReachedOn
     }
 }
 
