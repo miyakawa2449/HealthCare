@@ -45,6 +45,11 @@ struct WeightChart: View {
                 LineMark(x: .value("日", date(p.day)), y: .value("計画", p.value), series: .value("系列", "計画"))
                     .foregroundStyle(AppTheme.secondaryText)
                     .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                if guideline.count == 1 {
+                    PointMark(x: .value("日", date(p.day)), y: .value("計画", p.value))
+                        .foregroundStyle(AppTheme.secondaryText)
+                        .symbolSize(24)
+                }
             }
             ForEach(Array(segments.enumerated()), id: \.offset) { _, p in
                 LineMark(x: .value("日", date(p.day)), y: .value("7日平均", p.value), series: .value("系列", "7日平均 \(p.segment)"))
@@ -62,6 +67,8 @@ struct WeightChart: View {
         .chartYAxis(.hidden)
         .chartLegend(.hidden)
         .modifier(YDomain(domain: yDomain))
+        // 各点の値(計画の数値を含む)は読み上げない。グラフは形だけを見せる
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("直近\(points.count)日の7日平均と計画のグラフ")
     }
 

@@ -23,7 +23,7 @@ struct SetupFormState: Equatable {
     }
 
     private static func targetText(heightText: String, settings: PlanSettings) -> String? {
-        guard let height = Double(heightText), height > 0 else { return nil }
+        guard let height = Double(heightText), height.isFinite, height > 0 else { return nil }
         return DisplayFormat.kilogramsNumber(PlanSetup.defaultTargetWeight(heightCentimeters: height, settings: settings))
     }
 
@@ -52,6 +52,7 @@ struct SetupFormState: Equatable {
         guard let startWeight, let targetWeight else { return .notNumber }
         switch PlanSetup.validate(startWeight: startWeight, targetWeight: targetWeight) {
         case nil: return nil
+        case .notFinite: return .notNumber
         case .targetNotBelowStart: return .targetNotBelowStart
         case .startWeightNotPositive, .targetWeightNotPositive: return .notPositive
         }

@@ -44,6 +44,16 @@ struct SetupFormStateTests {
         #expect(s.problem == .notNumber)
     }
 
+    @Test("inf や nan は数字でない扱い。身長が inf でも最終目標に反映しない")
+    func notFinite() {
+        var s = SetupFormState(suggestedStartWeight: 123.5)
+        s.startText = "inf"
+        #expect(s.problem == .notNumber)
+        s.startText = "123.5"
+        s.heightChanged("inf")
+        #expect(s.targetText == "67.4")
+    }
+
     @Test("最終目標が開始体重以上なら targetNotBelowStart")
     func targetNotBelow() {
         var s = SetupFormState(suggestedStartWeight: 67.0)

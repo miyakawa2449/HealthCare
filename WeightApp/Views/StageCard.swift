@@ -115,7 +115,7 @@ struct ProgressBar: View {
             }
         }
         .frame(height: 8)
-        .accessibilityLabel("進み具合")
-        .accessibilityValue("\(Int((fraction * 100).rounded()))パーセント")
+        // 割合の数値は読み上げない(毎日の画面に出す数値は体重だけ)。進み具合はカードの文言で伝える
+        .accessibilityHidden(true)
     }
 }

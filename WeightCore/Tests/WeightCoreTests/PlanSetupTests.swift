@@ -42,6 +42,14 @@ struct PlanSetupTests {
         #expect(PlanSetup.validate(startWeight: start, targetWeight: target) == expected)
     }
 
+    @Test("無限大と NaN は notFinite(Roadmap の境界計算が終わらなくなるため)")
+    func notFinite() {
+        #expect(PlanSetup.validate(startWeight: .infinity, targetWeight: 67.4) == .notFinite)
+        #expect(PlanSetup.validate(startWeight: 123.5, targetWeight: -.infinity) == .notFinite)
+        #expect(PlanSetup.validate(startWeight: .nan, targetWeight: 67.4) == .notFinite)
+        #expect(PlanSetup.validate(startWeight: 123.5, targetWeight: .nan) == .notFinite)
+    }
+
     @Test("負の値も正の数でないとして扱う")
     func negative() {
         #expect(PlanSetup.validate(startWeight: -1, targetWeight: 67.4) == .startWeightNotPositive)

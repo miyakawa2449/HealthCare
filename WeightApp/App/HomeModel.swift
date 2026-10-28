@@ -44,18 +44,32 @@ final class HomeModel {
 
     private var today: CalendarDay { CalendarDay(date: Date(), calendar: calendar) }
 
+    /// 取り直しの世代。起動時・復帰時・初回設定からの呼び出しが重なったとき、最新の要求だけが状態を反映する。
+    private var refreshGeneration = 0
+
     func refresh() async {
         guard let builder else { return }
-        defer { hasRefreshed = true }
+        refreshGeneration += 1
+        let generation = refreshGeneration
+        let result: Result<DailySummary, any Error>
         do {
             try await health.requestReadAuthorization()
             var built = try await builder.build(on: today)
             if try recordFirstMilestoneIfReached(built) {
                 built = try await builder.build(on: built.day)
             }
+            result = .success(built)
+        } catch {
+            result = .failure(error)
+        }
+        // 後から始まった取り直しが先に終わっていたら、古い結果で上書きしない
+        guard generation == refreshGeneration else { return }
+        hasRefreshed = true
+        switch result {
+        case .success(let built):
             summary = built
             lastRefreshFailed = false
-        } catch {
+        case .failure:
             lastRefreshFailed = true
         }
     }
@@ -96,15 +110,22 @@ final class HomeModel {
         case invalid(PlanSetup.ValidationError)
         /// 保存先がない(利用不可のとき)。
         case unavailable
+        /// 計画はすでに保存されている(初回設定から上書きしない)。
+        case alreadyStarted
+        /// 計画は保存できたが、そのあとの取り直しに失敗した。次に開いたときに取り直す。
+        case savedButRefreshFailed
     }
 
     /// 計画を作って保存し、取り直す。開始日は今日(Asia/Tokyo)。
+    /// すでに計画があれば(保存済みなのに画面が初回設定のままの場合など)上書きせずに投げる。
     func startPlan(startWeight: Double, targetWeight: Double) async throws {
         if let error = PlanSetup.validate(startWeight: startWeight, targetWeight: targetWeight) { throw StartPlanError.invalid(error) }
         guard let planStore else { throw StartPlanError.unavailable }
+        guard try planStore.load() == nil else { throw StartPlanError.alreadyStarted }
         let roadmap = Roadmap(startWeight: startWeight, startDay: today, targetWeight: targetWeight, settings: settings)
         guard let phase = roadmap.initialPhase else { throw StartPlanError.invalid(.targetNotBelowStart) }
         try planStore.save(PlanRecord(roadmap: roadmap, phase: phase, originalRoadmap: nil, declinedEarlyArrivalOn: nil))
         await refresh()
+        if summary?.plan == nil { throw StartPlanError.savedButRefreshFailed }
     }
 }

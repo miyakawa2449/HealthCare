@@ -6,7 +6,7 @@ struct SetupView: View {
     let model: HomeModel
     @State private var form: SetupFormState
     @State private var isSaving = false
-    @State private var saveFailed = false
+    @State private var saveFailureText: String?
     private let suggestion: HomeModel.StartWeightSuggestion
 
     init(model: HomeModel) {
@@ -76,8 +76,8 @@ struct SetupView: View {
                     } else {
                         Text(summaryText).font(.footnote).foregroundStyle(AppTheme.secondaryText)
                     }
-                    if saveFailed {
-                        Text("計画を保存できませんでした。もう一度お試しください。")
+                    if let saveFailureText {
+                        Text(saveFailureText)
                             .font(.footnote).foregroundStyle(AppTheme.secondaryText)
                     }
                 }
@@ -110,9 +110,12 @@ struct SetupView: View {
         defer { isSaving = false }
         do {
             try await model.startPlan(startWeight: start, targetWeight: target)
-            saveFailed = false
+            saveFailureText = nil
+        } catch HomeModel.StartPlanError.savedButRefreshFailed, HomeModel.StartPlanError.alreadyStarted {
+            // 計画は保存済み。上書きはせず、次に開いたときの取り直しに任せる
+            saveFailureText = "計画は保存しました。ヘルスケアから体重を読み取れなかったので、もう一度開いてみてください。"
         } catch {
-            saveFailed = true
+            saveFailureText = "計画を保存できませんでした。もう一度お試しください。"
         }
     }
 }

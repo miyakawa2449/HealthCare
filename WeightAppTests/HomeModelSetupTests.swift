@@ -120,3 +120,97 @@ struct HomeModelSetupTests {
         #expect(RootRoute.route(for: model) == .failed)
     }
 }
+
+/// 取得の完了順を制御できる HealthStore。呼ばれた順に delays の待ち時間を使う。
+actor DelayedHealthStore: HealthStore {
+    private var weights: [WeightSample]
+    private var delays: [Duration]
+    private var failures: [Bool]
+    private var calls = 0
+
+    init(weights: [WeightSample], delays: [Duration], failures: [Bool] = []) {
+        self.weights = weights
+        self.delays = delays
+        self.failures = failures
+    }
+
+    func replaceWeights(_ weights: [WeightSample]) { self.weights = weights }
+
+    func requestReadAuthorization() async throws {}
+
+    func weightSamples(from: Date, to: Date) async throws -> [WeightSample] {
+        let index = calls
+        calls += 1
+        let snapshot = weights
+        if index < delays.count { try await Task.sleep(for: delays[index]) }
+        if index < failures.count, failures[index] { throw HomeModelTests.Failure() }
+        return snapshot.filter { $0.measuredAt >= from && $0.measuredAt < to }
+    }
+
+    func bodyFatSamples(from: Date, to: Date) async throws -> [BodyFatSample] { [] }
+}
+
+@MainActor
+struct HomeModelRefreshOrderTests {
+    let cal = AppCalendar.tokyo
+    var today: CalendarDay { CalendarDay(date: Date(), calendar: cal) }
+
+    func makeStore() throws -> PlanStore {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("HomeModelRefreshOrderTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return PlanStore(directory: dir)
+    }
+
+    func sample(_ kg: Double) -> [WeightSample] {
+        [WeightSample(kilograms: kg, measuredAt: today.startDate(in: cal).addingTimeInterval(8 * 3600), source: .healthPlanet)]
+    }
+
+    @Test("遅く終わった古い取得は、先に終わった新しい結果を上書きしない")
+    func staleSuccessIsIgnored() async throws {
+        let health = DelayedHealthStore(weights: sample(123.5), delays: [.milliseconds(300), .zero])
+        let model = HomeModel(health: health, planStore: try makeStore())
+        let first = Task { await model.refresh() }           // 古い値(123.5)で 300ms 待つ
+        try await Task.sleep(for: .milliseconds(50))
+        await health.replaceWeights(sample(120.0))
+        await model.refresh()                                // 新しい値で先に終わる
+        #expect(model.summary?.sevenDayAverage?.kilograms == 120.0)
+        await first.value
+        #expect(model.summary?.sevenDayAverage?.kilograms == 120.0)
+        #expect(!model.lastRefreshFailed)
+    }
+
+    @Test("遅く終わった古い失敗は、先に終わった新しい成功を失敗にしない")
+    func staleFailureIsIgnored() async throws {
+        let health = DelayedHealthStore(weights: sample(123.5), delays: [.milliseconds(300), .zero], failures: [true, false])
+        let model = HomeModel(health: health, planStore: try makeStore())
+        let first = Task { await model.refresh() }
+        try await Task.sleep(for: .milliseconds(50))
+        await model.refresh()
+        #expect(!model.lastRefreshFailed)
+        await first.value
+        #expect(!model.lastRefreshFailed)
+        #expect(model.summary?.sevenDayAverage?.kilograms == 123.5)
+    }
+
+    @Test("保存後の取り直しに失敗したら savedButRefreshFailed を投げ、計画は保存されている")
+    func savedButRefreshFailed() async throws {
+        let store = try makeStore()
+        let health = MockHealthStore(weights: sample(123.5))
+        let model = HomeModel(health: health, planStore: store)
+        await model.refresh()
+        await health.setFailure(HomeModelTests.Failure())
+        await #expect(throws: HomeModel.StartPlanError.savedButRefreshFailed) {
+            try await model.startPlan(startWeight: 123.5, targetWeight: 67.4)
+        }
+        #expect(try store.load()?.roadmap.startDay == today)
+        // もう一度押しても上書きしない
+        await #expect(throws: HomeModel.StartPlanError.alreadyStarted) {
+            try await model.startPlan(startWeight: 100.0, targetWeight: 67.4)
+        }
+        #expect(try store.load()?.roadmap.startWeight == 123.5)
+        // 次の取り直しが成功すればホームに進む
+        await health.setFailure(nil)
+        await model.refresh()
+        #expect(RootRoute.route(for: model) == .home)
+    }
+}

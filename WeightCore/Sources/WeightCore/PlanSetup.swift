@@ -10,13 +10,16 @@ public enum PlanSetup {
     }
 
     public enum ValidationError: Error, Equatable, Sendable {
+        /// 無限大や NaN(`Roadmap` の境界計算が終わらなくなる)。
+        case notFinite
         case startWeightNotPositive
         case targetWeightNotPositive
         case targetNotBelowStart
     }
 
-    /// 開始体重と最終目標が正の数で、最終目標が開始体重より小さければ nil。
+    /// 開始体重と最終目標が有限の正の数で、最終目標が開始体重より小さければ nil。
     public static func validate(startWeight: Double, targetWeight: Double) -> ValidationError? {
+        guard startWeight.isFinite, targetWeight.isFinite else { return .notFinite }
         guard startWeight > 0 else { return .startWeightNotPositive }
         guard targetWeight > 0 else { return .targetWeightNotPositive }
         guard targetWeight < startWeight else { return .targetNotBelowStart }
