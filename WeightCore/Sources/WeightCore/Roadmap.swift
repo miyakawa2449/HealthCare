@@ -142,3 +142,20 @@ public struct Roadmap: Sendable, Equatable, Codable {
         return result
     }
 }
+
+// MARK: 最初の区切り(5%)
+
+extension Roadmap {
+    /// 7日平均(丸め)が最初の区切り以下なら到達。境界は下の区分に含める。
+    public func hasReachedFirstMilestone(sevenDayAverage: Double) -> Bool {
+        Weight.rounded(sevenDayAverage) <= firstMilestoneWeight
+    }
+
+    /// ステージ1の減量中だけ、起点から標準ペースで最初の区切りに届く予定日。起点の体重が区切り以下なら起点の日。
+    /// それ以外のフェーズは nil。
+    public func firstMilestoneEstimatedArrival(from phase: PlanPhase) -> CalendarDay? {
+        guard case .losing(let stage, let origin) = phase, stage == 1 else { return nil }
+        let days = Pace.days(toReach: firstMilestoneWeight / origin.weight, monthlyRate: settings.monthlyRate, settings: settings)
+        return origin.day.adding(days: days)
+    }
+}

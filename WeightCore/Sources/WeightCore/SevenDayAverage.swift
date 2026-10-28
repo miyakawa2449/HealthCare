@@ -15,3 +15,14 @@ public struct SevenDayAverage: Sendable, Equatable {
         daysUsed = inWindow.count
     }
 }
+
+extension SevenDayAverage {
+    /// `from`〜`to` の各日について、その日に終わる窓の7日平均。出ない日は nil。`from > to` なら空。
+    public static func series(from: CalendarDay, to: CalendarDay, in weights: [DailyWeight]) -> [(day: CalendarDay, average: SevenDayAverage?)] {
+        guard from <= to else { return [] }
+        return (0...from.days(until: to)).map { offset in
+            let d = from.adding(days: offset)
+            return (day: d, average: SevenDayAverage(endingOn: d, in: weights))
+        }
+    }
+}
