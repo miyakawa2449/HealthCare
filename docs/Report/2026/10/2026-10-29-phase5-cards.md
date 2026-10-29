@@ -13,7 +13,9 @@
 | WeightCore: `PhaseProgression`(到達・卒業・連鎖)、`Roadmap.firstMilestoneReachedDay`。`PlanSettings` に項目を足さず再提案の日数は `earlyArrivalRetryDays` を共用 | 295c2c0 |
 | アプリ: `PlanRecord` の任意項目(`originalPhase` / `declinedPlanReviewOn` / `continuedMaintenanceOn` / `events`)、`PlanRecord+Actions`、`DailySummaryBuilder.progressed`、`HomeCards`、`HomeModel` の操作。テスト 4ファイル + fixture | 43d6e6d |
 | 画面: `HomeCardView`(出来事 / 提案 / 一言)、`RoadmapRows` + `RoadmapView`、タブ差し替え、Preview の状態追加と smoke テスト | e0975d1 |
-| Codex レビュー1回目 | (下の「確認結果」) |
+| Codex レビュー1回目 → 高2(「最終目標」の文言、保存の競合)、中2(最終ステージの到達日、「12週間」の文言)、低1(維持期間の終了日)。競合と到達日を修正、文言2件は人間の判断待ち、終了日は割り切りを文書化 | d2679df |
+| Codex レビュー2回目 → 中1(取得中に計画が差し替わると取得範囲が合わない)。取得からやり直すよう修正 | (次のコミット) |
+| Codex レビュー3回目 | (結果は docs/review/05-cards.md) |
 
 ## 決めたこと
 
@@ -28,9 +30,9 @@
 
 | 確認 | 結果 |
 | --- | --- |
-| `swift test` | 151件通過 |
-| `xcodebuild test`(iPhone 17 Pro, iOS 26.5) | アプリ126件 + WeightCore 151件通過 |
-| Codex レビュー | (記入待ち) |
+| `swift test` | 152件通過 |
+| `xcodebuild test`(iPhone 17 Pro, iOS 26.5) | アプリ129件 + WeightCore 152件通過 |
+| Codex レビュー | 1回目 高2・中2・低1 → 競合と到達日を修正。2回目 中1 → 再取得を修正。3回目の結果は docs/review/05-cards.md |
 | Xcode の Preview | 未確認(この環境から Preview を取れない。人間が確認) |
 | 実機 | 未確認 |
 
@@ -39,6 +41,7 @@
 1. **派生データが古いと、新しいファイルを足しても「メンバーがない」と出る。** アプリ本体は単体でビルドできるのにテストだけ失敗した。DerivedData を消して解消。
 2. **保存される型(`PlanSettings`、`Stage`)に項目を足すと既存の plan.json が読めなくなる。** 再提案の日数は既存の設定値を共用し、維持期間の終了日は保存している範囲で出すことにした。
 3. **Preview のデータは「意図した状態」になっているかをテストで確かめる価値がある。** 85日目のつもりで作ったデータが範囲内に28日収まって卒業していた。
+4. **「読んで、待って、書く」は競合する。** builder が取得前に読んだ記録へ遷移を足して保存すると、待っている間のカード操作を上書きした。読み → 変更 → 書き をロックの中にまとめ(`PlanStore.update`)、取得範囲を決めた計画と保存時の計画が違えば取り直す。再現テストは修正前のコードで失敗することを確かめた。
 
 ## 新しく足した文言
 
@@ -46,7 +49,7 @@
 
 ## 残っていること
 
-- Codex レビューの指摘の対応(下に追記)。
+- 文言の判断(人間): 出来事カードの「最終目標 {体重} kg に届きました」(ホームに「最終目標」の語を出すか)、85日目カードの「維持期間が12週間を超えました」(体重以外の数値を出すか)。
 - 人間の確認: Xcode の `#Preview`(`HomeCardViews.swift` 11件、`HomeView.swift` の「出来事1件 + 提案1件」「一言だけ」、`RoadmapView.swift` 5件)、実機で既存の計画が読めてロードマップのタブが出ること。
 
 ## 次にやること

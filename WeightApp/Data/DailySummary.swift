@@ -46,6 +46,11 @@ struct PlanStatus: Equatable {
     var shouldProposePlanReview: Bool
 }
 
+enum DailySummaryBuilderError: Error, Equatable {
+    /// 取得中に計画が差し替わり続けて、取得範囲と計画の合う summary を作れなかった。
+    case planReplacedRepeatedly
+}
+
 struct DailySummaryBuilder: Sendable {
     let health: any HealthStore
     let planStore: PlanStore
@@ -54,17 +59,20 @@ struct DailySummaryBuilder: Sendable {
 
     /// 計画があれば開始日の6日前から、なければ全履歴を取得する(初回設定で最初の記録の日まで開始日を遡れるように。04-screens/03-decisions.md #12)。
     /// 計画があれば、取得のあとに自動遷移(最初の区切り、到達、卒業)を反映して保存し、それを基準に判定する(05-cards/01-design.md 3.)。
+    /// 取得中に計画が差し替わり続けたときに、やり直す回数の上限。
+    static let maxAttempts = 3
+
     func build(on day: CalendarDay) async throws -> DailySummary {
-        // 取得を待つ間に計画が差し替わる(開始日が変わる、消える)と取得範囲が合わなくなるので、その場合は取得からやり直す
-        for _ in 0..<2 {
-            if let summary = try await attempt(on: day, retryIfPlanReplaced: true) { return summary }
+        // 取得を待つ間に計画が差し替わる(開始日が変わる、消える)と取得範囲が合わなくなるので、その場合は取得からやり直す。
+        // 上限まで差し替わり続けたら、取得範囲と計画が合わない summary は返さずに失敗にする(呼び出し側は前回の値を保つ)
+        for _ in 0..<Self.maxAttempts {
+            if let summary = try await attempt(on: day) { return summary }
         }
-        return try await attempt(on: day, retryIfPlanReplaced: false)!
+        throw DailySummaryBuilderError.planReplacedRepeatedly
     }
 
-    /// 1回分の 取得 → 遷移の適用 → 判定。取得中に計画の有無か開始日が変わっていたら、`retryIfPlanReplaced` なら nil、
-    /// そうでなければ遷移を適用せずに最新の記録で組み立てる(誤った到達日を保存しないため)。
-    private func attempt(on day: CalendarDay, retryIfPlanReplaced: Bool) async throws -> DailySummary? {
+    /// 1回分の 取得 → 遷移の適用 → 判定。取得中に計画の有無か開始日が変わっていたら、遷移を適用せずに nil(誤った到達日を保存しないため)。
+    private func attempt(on day: CalendarDay) async throws -> DailySummary? {
         let loaded = try planStore.load()
         let firstDay = loaded.map { $0.roadmap.startDay.adding(days: -(SevenDayAverage.windowDays - 1)) }
         let from = firstDay?.startDate(in: calendar) ?? Date.distantPast
@@ -84,7 +92,7 @@ struct DailySummaryBuilder: Sendable {
             }
         }
         if (loaded == nil) != (record == nil) { replaced = true }
-        if replaced && retryIfPlanReplaced { return nil }
+        if replaced { return nil }
 
         var summary = DailySummary(
             day: day,

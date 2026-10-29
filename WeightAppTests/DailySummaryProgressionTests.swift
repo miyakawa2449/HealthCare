@@ -105,6 +105,30 @@ struct DailySummaryProgressionTests {
         #expect(summary.recordedWeights.count == 61)
     }
 
+    @Test("取得のたびに計画が差し替わり続けたら、上限で失敗にして不整合な summary を返さない。誤った遷移も保存しない")
+    func planReplacedRepeatedly() async throws {
+        let store = try makeStore()
+        let today = CalendarDay(date: Date(), calendar: cal)
+        func plan(startingDaysAgo n: Int) -> PlanRecord {
+            let r = Roadmap(startWeight: 123.5, startDay: today.adding(days: -n), targetWeight: 67.4, settings: s)
+            return PlanRecord(roadmap: r, phase: r.initialPhase!, originalRoadmap: nil, declinedEarlyArrivalOn: nil)
+        }
+        try store.save(plan(startingDaysAgo: 5))
+        let delays = Array(repeating: Duration.milliseconds(200), count: DailySummaryBuilder.maxAttempts)
+        let health = DelayedHealthStore(weights: samples(from: today.adding(days: -30), days: 31, 111.0), delays: delays)
+        let builder = DailySummaryBuilder(health: health, planStore: store, calendar: cal, settings: s)
+        let building = Task { try await builder.build(on: today) }
+        // 各回の取得中(200ms 待ちの途中。100ms, 300ms, 500ms)に開始日を変える
+        for i in 0..<DailySummaryBuilder.maxAttempts {
+            try await Task.sleep(for: .milliseconds(i == 0 ? 100 : 200))
+            try store.save(plan(startingDaysAgo: 6 + i))
+        }
+        await #expect(throws: DailySummaryBuilderError.planReplacedRepeatedly) { try await building.value }
+        let saved = try #require(try store.load())
+        #expect(saved.phase == plan(startingDaysAgo: 6 + DailySummaryBuilder.maxAttempts - 1).phase)   // 遷移は保存していない
+        #expect(saved.unreadEvents.isEmpty)
+    }
+
     @Test("維持期間で28日範囲内なら卒業して次のステージへ。出来事 graduated")
     func graduation() async throws {
         let store = try makeStore()
