@@ -123,3 +123,35 @@
 | --- | --- | --- |
 | 1 | 中 | 修正。上限(3回)まで差し替わり続けたら `DailySummaryBuilderError.planReplacedRepeatedly` を投げ、不整合な summary を返さない(`HomeModel` は前回の値を保ち `lastRefreshFailed`)。テスト `planReplacedRepeatedly`(3回とも取得中に開始日を変え、失敗すること・遷移を保存しないことを確認) |
 
+## 4回目(9968679 時点)
+
+### Codex の回答(原文)
+
+## 指摘
+
+### 1. 重要度: 低
+
+- 該当: [2026-10-29-phase5-cards.md:35](/Users/tsuyoshi/dev/HealthCare/docs/Report/2026/10/2026-10-29-phase5-cards.md:35)
+- 問題: テスト結果が「アプリ129件」と記録されていますが、提示された実行結果はアプリ130件です。
+- 再現手順または根拠: 今回 `planReplacedRepeatedly` が1件追加され、ユーザー提示では「アプリ130件、WeightCore 152件が通る」とされています。
+- 修正案: 「アプリ130件 + WeightCore 152件通過」へ更新してください。
+
+## 解消確認
+
+3回目の指摘は解消しています。
+
+- [DailySummary.swift:68](/Users/tsuyoshi/dev/HealthCare/WeightApp/Data/DailySummary.swift:68) で最大3回すべて不一致ならエラーとなり、不整合な `DailySummary` は返りません。
+- 不一致時は [DailySummary.swift:95](/Users/tsuyoshi/dev/HealthCare/WeightApp/Data/DailySummary.swift:95) で遷移・判定前に再試行しています。
+- `HomeModel.refresh` は既存の失敗処理に入り、前回の `summary` を維持します。
+- 追加テストは3回すべての差し替え、エラー、遷移の未保存を確認しています。
+- 上記の文書上の件を除き、変更箇所に回帰は確認できませんでした。
+
+読み取り専用環境のためテストは再実行しておらず、アプリ130件・WeightCore 152件の通過は提示内容のみ確認しました。文言の判断は今回の対象外です。
+
+### 対応
+
+| # | 重要度 | 対応 |
+| --- | --- | --- |
+| 1 | 低 | 日報の件数を130件に修正 |
+
+文言2件(「最終目標」「12週間」)を除いてマージ可。

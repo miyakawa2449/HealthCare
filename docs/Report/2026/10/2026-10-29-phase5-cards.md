@@ -14,8 +14,9 @@
 | アプリ: `PlanRecord` の任意項目(`originalPhase` / `declinedPlanReviewOn` / `continuedMaintenanceOn` / `events`)、`PlanRecord+Actions`、`DailySummaryBuilder.progressed`、`HomeCards`、`HomeModel` の操作。テスト 4ファイル + fixture | 43d6e6d |
 | 画面: `HomeCardView`(出来事 / 提案 / 一言)、`RoadmapRows` + `RoadmapView`、タブ差し替え、Preview の状態追加と smoke テスト | e0975d1 |
 | Codex レビュー1回目 → 高2(「最終目標」の文言、保存の競合)、中2(最終ステージの到達日、「12週間」の文言)、低1(維持期間の終了日)。競合と到達日を修正、文言2件は人間の判断待ち、終了日は割り切りを文書化 | d2679df |
-| Codex レビュー2回目 → 中1(取得中に計画が差し替わると取得範囲が合わない)。取得からやり直すよう修正 | (次のコミット) |
-| Codex レビュー3回目 | (結果は docs/review/05-cards.md) |
+| Codex レビュー2回目 → 中1(取得中に計画が差し替わると取得範囲が合わない)。取得からやり直すよう修正 | c2cafd5 |
+| Codex レビュー3回目 → 中1(差し替わり続けたときに不整合な summary を返す)。上限で失敗にするよう修正 | 9968679 |
+| Codex レビュー4回目 → 低1(日報の件数)。マージ可(文言の判断を除く) | |
 
 ## 決めたこと
 
@@ -31,8 +32,8 @@
 | 確認 | 結果 |
 | --- | --- |
 | `swift test` | 152件通過 |
-| `xcodebuild test`(iPhone 17 Pro, iOS 26.5) | アプリ129件 + WeightCore 152件通過 |
-| Codex レビュー | 1回目 高2・中2・低1 → 競合と到達日を修正。2回目 中1 → 再取得を修正。3回目の結果は docs/review/05-cards.md |
+| `xcodebuild test`(iPhone 17 Pro, iOS 26.5) | アプリ130件 + WeightCore 152件通過 |
+| Codex レビュー | 1回目 高2・中2・低1 → 競合と到達日を修正(文言2件は判断待ち)。2回目 中1 → 再取得。3回目 中1 → 上限で失敗。4回目 低1(日報の件数)のみ、マージ可(文言の判断を除く) |
 | Xcode の Preview | 未確認(この環境から Preview を取れない。人間が確認) |
 | 実機 | 未確認 |
 
