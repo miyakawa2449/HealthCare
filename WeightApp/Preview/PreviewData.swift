@@ -53,7 +53,17 @@ enum PreviewData {
 
     // MARK: ホーム
 
-    enum HomeState { case noRecords, settlingIn, onTrack, afterFirstMilestone, finalStage, maintaining, maintenanceMode, refreshFailed }
+    enum HomeState {
+        case noRecords, settlingIn, onTrack, afterFirstMilestone, finalStage, maintaining, maintenanceMode, refreshFailed
+        /// 出来事1件(ステージ到達)+ 提案1件(85日目)。
+        case eventAndProposal
+        /// 一言だけ(維持の範囲から上に14日以上)。
+        case noticeOnly
+        /// ステージ3の減量中(ロードマップ用)。
+        case stage3
+        /// 計画見直しを採用したあと(ロードマップに「元の計画に戻す」が出る)。
+        case afterReview
+    }
 
     static func homeModel(_ state: HomeState) -> HomeModel {
         let store = tempStore()
@@ -99,6 +109,42 @@ enum PreviewData {
             try? store.save(PlanRecord(roadmap: roadmap, phase: phase, originalRoadmap: nil, declinedEarlyArrivalOn: nil,
                                        firstMilestoneReachedOn: today.adding(days: -1100)))
             weights = samples(from: today.adding(days: -34), days: 35, start: 67.3, slopePerDay: 0.01)
+        case .eventAndProposal:
+            let roadmap = Roadmap(startWeight: 123.5, startDay: today.adding(days: -300), targetWeight: 67.4, settings: settings)
+            let phase = roadmap.phaseOnArrival(stage: 1, sevenDayAverage: 111.2, on: today.adding(days: -85))!
+            var record = PlanRecord(roadmap: roadmap.rescheduled(from: phase), phase: phase, originalRoadmap: nil, declinedEarlyArrivalOn: nil,
+                                    firstMilestoneReachedOn: today.adding(days: -200))
+            record.appendEvent(.stageArrived(stage: 1, weight: 111.2), on: today.adding(days: -85))
+            try? store.save(record)
+            // 到達の翌日から範囲(±2%)の上に出たままで卒業していない
+            weights = samples(from: today.adding(days: -91), days: 7, start: 111.1, slopePerDay: 0)
+                + samples(from: today.adding(days: -84), days: 85, start: 114.0, slopePerDay: 0.005)
+        case .noticeOnly:
+            let roadmap = Roadmap(startWeight: 123.5, startDay: today.adding(days: -200), targetWeight: 67.4, settings: settings)
+            let phase = roadmap.phaseOnArrival(stage: 1, sevenDayAverage: 111.2, on: today.adding(days: -40))!
+            try? store.save(PlanRecord(roadmap: roadmap.rescheduled(from: phase), phase: phase, originalRoadmap: nil, declinedEarlyArrivalOn: nil,
+                                       firstMilestoneReachedOn: today.adding(days: -120)))
+            weights = samples(from: today.adding(days: -46), days: 47, start: 112.5, slopePerDay: 0.05)
+        case .stage3:
+            var roadmap = Roadmap(startWeight: 123.5, startDay: today.adding(days: -600), targetWeight: 67.4, settings: settings)
+            roadmap = roadmap.rescheduled(from: roadmap.phaseOnArrival(stage: 1, sevenDayAverage: 111.2, on: today.adding(days: -420))!)
+            roadmap = roadmap.rescheduled(from: .losing(stage: 2, origin: StageOrigin(weight: 111.0, day: today.adding(days: -390))))
+            roadmap = roadmap.rescheduled(from: roadmap.phaseOnArrival(stage: 2, sevenDayAverage: 100.0, on: today.adding(days: -150))!)
+            let phase = PlanPhase.losing(stage: 3, origin: StageOrigin(weight: 99.8, day: today.adding(days: -120)))
+            roadmap = roadmap.rescheduled(from: phase)
+            try? store.save(PlanRecord(roadmap: roadmap, phase: phase, originalRoadmap: nil, declinedEarlyArrivalOn: nil,
+                                       firstMilestoneReachedOn: today.adding(days: -520)))
+            weights = (-6...120).map { i in
+                let d = today.adding(days: i - 120)
+                let kg = Guideline.expectedWeight(startWeight: 99.8, daysElapsed: max(i, 0), settings: settings) + Double((i * 7) % 5) * 0.1 - 0.2
+                return WeightSample(kilograms: kg, measuredAt: d.startDate(in: cal).addingTimeInterval(8 * 3600), source: .healthPlanet)
+            }
+        case .afterReview:
+            let roadmap = Roadmap(startWeight: 123.5, startDay: today.adding(days: -80), targetWeight: 67.4, settings: settings)
+            var record = PlanRecord(roadmap: roadmap, phase: roadmap.initialPhase!, originalRoadmap: nil, declinedEarlyArrivalOn: nil)
+            try? record.adoptPlanReview(sevenDayAverage: 121.8, on: today.adding(days: -3))
+            try? store.save(record)
+            weights = samples(from: today.adding(days: -86), days: 87, start: 123.3, slopePerDay: -0.02)
         case .refreshFailed:
             let roadmap = Roadmap(startWeight: 123.5, startDay: today.adding(days: -45), targetWeight: 67.4, settings: settings)
             try? store.save(PlanRecord(roadmap: roadmap, phase: roadmap.initialPhase!, originalRoadmap: nil, declinedEarlyArrivalOn: nil))

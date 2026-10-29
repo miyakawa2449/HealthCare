@@ -78,6 +78,7 @@ public struct Roadmap: Sendable, Equatable, Codable {
     /// 到達予定日をフェーズから計算し直す。境界は変えない。
     /// 減量中: そのステージの到達予定日を起点から計算し、以降は維持期間(仮定)を挟んで続ける。
     /// 維持中: そのステージの到達予定日は実際の到達日にし、次のステージは到達日 + 維持期間(仮定)から。
+    /// 維持モード: 最終ステージの到達予定日を実際の到達日にする。
     /// 手前のステージの予定日は触らない。
     public func rescheduled(from phase: PlanPhase) -> Roadmap {
         var result = self
@@ -93,8 +94,9 @@ public struct Roadmap: Sendable, Equatable, Codable {
                 let next = Self.scheduled(Array(stages[stage...]), from: arrival.weight, on: arrival.day.adding(days: settings.assumedMaintenanceDays), settings: settings, maintenanceBeforeFirst: false)
                 result.stages.replaceSubrange(stage..., with: next)
             }
-        case .maintenanceMode:
-            break
+        case .maintenanceMode(let arrival):
+            // 最終ステージの到達予定日を実際の到達日にする
+            if !result.stages.isEmpty { result.stages[result.stages.count - 1].estimatedArrival = arrival.day }
         }
         return result
     }

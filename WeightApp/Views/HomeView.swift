@@ -7,7 +7,14 @@ struct HomeScreen: View {
 
     var body: some View {
         if let summary = model.summary {
-            HomeView(summary: summary, showsRefreshFailure: model.lastRefreshFailed)
+            HomeView(summary: summary, cards: model.cards, showsRefreshFailure: model.lastRefreshFailed) { action in
+                do {
+                    try await model.perform(action)
+                } catch {
+                    // カードが古い状態で押された(条件外)か保存に失敗した。取り直して今の状態を出す
+                    await model.refresh()
+                }
+            }
         } else {
             ZStack {
                 AppTheme.background.ignoresSafeArea()
@@ -20,15 +27,21 @@ struct HomeScreen: View {
 /// ホーム画面(デザイン1枚目)。出す数値は体重だけ。評価ラベル、体組成、最終目標(最終ステージを除く)は出さない。
 struct HomeView: View {
     let summary: DailySummary
+    /// 7日平均カードとステージカードの間に出すカード。
+    var cards: [HomeCard] = []
     /// 取り直しに失敗して前回の値を出している。
     var showsRefreshFailure = false
+    /// カードのボタンの操作。
+    var perform: (CardAction) async -> Void = { _ in }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
                 WeightCard(summary: summary)
-                // フェーズ5のカード(計画見直し、85日目、早期到達、維持中の一言)はここに差し込む
+                ForEach(cards) { card in
+                    HomeCardView(card: card, perform: perform)
+                }
                 if let plan = summary.plan {
                     StageCard(plan: plan, sevenDayAverage: summary.sevenDayAverage?.kilograms, day: summary.day)
                 }
@@ -97,6 +110,14 @@ extension View {
 
 #Preview("維持モード") {
     HomeScreen(model: PreviewData.homeModel(.maintenanceMode))
+}
+
+#Preview("出来事1件 + 提案1件(85日目)") {
+    HomeScreen(model: PreviewData.homeModel(.eventAndProposal))
+}
+
+#Preview("一言だけ(維持の範囲から上)") {
+    HomeScreen(model: PreviewData.homeModel(.noticeOnly))
 }
 
 #Preview("読み取り失敗(前回の値)") {

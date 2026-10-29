@@ -15,6 +15,14 @@ struct PlanRecord: Codable, Equatable {
     /// 最初の区切り(5%)に到達した日。到達後は戻らない。
     /// 項目の追加だけなので schemaVersion は 1 のまま(項目のない JSON は nil として読める)。
     var firstMilestoneReachedOn: CalendarDay?
+    /// 計画見直しを採用したときの、採用前のフェーズ(「元の計画に戻す」用)。originalRoadmap と対で持つ。
+    var originalPhase: PlanPhase?
+    /// 計画見直しの提案を断った日(元の計画に戻した日も含む)。earlyArrivalRetryDays 後に再提案する。
+    var declinedPlanReviewOn: CalendarDay?
+    /// 85日目のカードで「維持を続ける」を選んだ日。earlyArrivalRetryDays 後に再提案する。
+    var continuedMaintenanceOn: CalendarDay?
+    /// まだ閉じていない出来事(古い順)。項目がなければ空として扱う。
+    var events: [PlanEvent]?
 
     init(roadmap: Roadmap, phase: PlanPhase, originalRoadmap: Roadmap?, declinedEarlyArrivalOn: CalendarDay?,
          firstMilestoneReachedOn: CalendarDay? = nil) {
@@ -24,6 +32,8 @@ struct PlanRecord: Codable, Equatable {
         self.declinedEarlyArrivalOn = declinedEarlyArrivalOn
         self.firstMilestoneReachedOn = firstMilestoneReachedOn
     }
+
+    var unreadEvents: [PlanEvent] { events ?? [] }
 }
 
 enum PlanStoreError: Error, Equatable {
@@ -36,6 +46,8 @@ final class PlanStore: Sendable {
     static let appGroupIdentifier = "group.com.miyakawa.weightapp"
 
     let fileURL: URL
+    /// 読み → 変更 → 書き を1つにまとめるためのロック。builder の自動遷移の保存とカードの操作が重なっても、古い記録で上書きしない。
+    private let lock = NSLock()
 
     init(directory: URL) {
         fileURL = directory.appendingPathComponent("plan.json")
@@ -48,6 +60,27 @@ final class PlanStore: Sendable {
 
     /// 未保存なら nil。スキーマのバージョンが違えば `PlanStoreError`(本体を読む前に判定する)、壊れていれば DecodingError を投げる。
     func load() throws -> PlanRecord? {
+        try lock.withLock { try loadLocked() }
+    }
+
+    func save(_ record: PlanRecord) throws {
+        try lock.withLock { try saveLocked(record) }
+    }
+
+    /// 最新の記録を読み、`body` で変更し、変わっていれば保存する。未保存なら `body` を呼ばず nil。
+    /// 読みから書きまでロックを持つので、別の呼び出しの変更を取りこぼさない。
+    @discardableResult
+    func update(_ body: (inout PlanRecord) throws -> Void) throws -> PlanRecord? {
+        try lock.withLock {
+            guard let loaded = try loadLocked() else { return nil }
+            var record = loaded
+            try body(&record)
+            if record != loaded { try saveLocked(record) }
+            return record
+        }
+    }
+
+    private func loadLocked() throws -> PlanRecord? {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
         let data = try Data(contentsOf: fileURL)
         let header = try JSONDecoder().decode(SchemaHeader.self, from: data)
@@ -62,7 +95,7 @@ final class PlanStore: Sendable {
         var schemaVersion: Int
     }
 
-    func save(_ record: PlanRecord) throws {
+    private func saveLocked(_ record: PlanRecord) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(record).write(to: fileURL, options: .atomic)

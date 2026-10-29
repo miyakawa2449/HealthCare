@@ -44,10 +44,12 @@ struct StageCard: View {
             Text("\(DisplayFormat.kilograms(target)) をめざしています")
                 .font(.title3.weight(.semibold))
             ProgressBar(fraction: Self.fraction(origin: origin.weight, target: target, current: sevenDayAverage))
-            HStack {
+            VStack(alignment: .leading, spacing: 2) {
                 Text("\(DisplayFormat.kilograms(origin.weight)) からスタート")
-                Spacer()
-                if let arrival { Text("到達予定 \(DisplayFormat.approximateDate(arrival))") }
+                if let arrival {
+                    // 何の予定かを言葉で示す(最初の区切り / 次の区切り)。1行に収まるよう別の行にする
+                    Text("\(aimingFirstMilestone ? "最初の区切り" : "次の区切り")の到達予定 \(DisplayFormat.approximateDate(arrival))")
+                }
             }
             .font(.footnote)
             .foregroundStyle(AppTheme.secondaryText)

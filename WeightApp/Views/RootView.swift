@@ -23,7 +23,7 @@ struct RootView: View {
     }
 }
 
-/// ホーム / ロードマップ / レポートのタブ。ロードマップとレポートの中身は後のフェーズ(03-decisions.md #5)。
+/// ホーム / ロードマップ / レポートのタブ。レポートの中身はフェーズ6。
 struct MainTabView: View {
     let model: HomeModel
 
@@ -33,7 +33,7 @@ struct MainTabView: View {
                 HomeScreen(model: model)
             }
             Tab("ロードマップ", systemImage: "point.topleft.down.to.point.bottomright.curvepath") {
-                PlaceholderView(text: "ロードマップは次の段階で作ります。")
+                RoadmapScreen(model: model)
             }
             Tab("レポート", systemImage: "doc.text") {
                 PlaceholderView(text: "レポートは次の段階で作ります。")

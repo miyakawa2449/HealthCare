@@ -13,6 +13,12 @@ public struct ActualPace: Sendable, Equatable {
     /// 実際に使った窓の日数。
     public var windowDays: Int
 
+    /// 値を直接与える(テストと Preview 用)。
+    public init(monthlyRate: Double, windowDays: Int) {
+        self.monthlyRate = monthlyRate
+        self.windowDays = windowDays
+    }
+
     public init?(endingOn day: CalendarDay, phase: PlanPhase, weights: [DailyWeight], roadmap: Roadmap) {
         guard case .losing(let stage, let origin) = phase else { return nil }
         let settings = roadmap.settings

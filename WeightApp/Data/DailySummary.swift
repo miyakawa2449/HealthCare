@@ -28,10 +28,12 @@ struct DailyPoint: Equatable {
 
 /// 計画に関する判定のまとめ。
 struct PlanStatus: Equatable {
-    var roadmap: Roadmap
-    var phase: PlanPhase
+    /// 保存されている計画(自動遷移を反映したあと)。
+    var record: PlanRecord
+    var roadmap: Roadmap { record.roadmap }
+    var phase: PlanPhase { record.phase }
     /// 最初の区切りに到達した日(保存値)。ステージ1で nil なら「最初の区切り」をめざしている表示になる。
-    var firstMilestoneReachedOn: CalendarDay?
+    var firstMilestoneReachedOn: CalendarDay? { record.firstMilestoneReachedOn }
     /// 画面に出すステージ番号。フェーズの番号で、体重から逆算しない。維持モードは nil。
     var stageNumber: Int?
     var guideline: Double
@@ -44,6 +46,11 @@ struct PlanStatus: Equatable {
     var shouldProposePlanReview: Bool
 }
 
+enum DailySummaryBuilderError: Error, Equatable {
+    /// 取得中に計画が差し替わり続けて、取得範囲と計画の合う summary を作れなかった。
+    case planReplacedRepeatedly
+}
+
 struct DailySummaryBuilder: Sendable {
     let health: any HealthStore
     let planStore: PlanStore
@@ -51,15 +58,41 @@ struct DailySummaryBuilder: Sendable {
     let settings: PlanSettings
 
     /// 計画があれば開始日の6日前から、なければ全履歴を取得する(初回設定で最初の記録の日まで開始日を遡れるように。04-screens/03-decisions.md #12)。
+    /// 計画があれば、取得のあとに自動遷移(最初の区切り、到達、卒業)を反映して保存し、それを基準に判定する(05-cards/01-design.md 3.)。
+    /// 取得中に計画が差し替わり続けたときに、やり直す回数の上限。
+    static let maxAttempts = 3
+
     func build(on day: CalendarDay) async throws -> DailySummary {
-        let record = try planStore.load()
-        let firstDay = record.map { $0.roadmap.startDay.adding(days: -(SevenDayAverage.windowDays - 1)) }
+        // 取得を待つ間に計画が差し替わる(開始日が変わる、消える)と取得範囲が合わなくなるので、その場合は取得からやり直す。
+        // 上限まで差し替わり続けたら、取得範囲と計画が合わない summary は返さずに失敗にする(呼び出し側は前回の値を保つ)
+        for _ in 0..<Self.maxAttempts {
+            if let summary = try await attempt(on: day) { return summary }
+        }
+        throw DailySummaryBuilderError.planReplacedRepeatedly
+    }
+
+    /// 1回分の 取得 → 遷移の適用 → 判定。取得中に計画の有無か開始日が変わっていたら、遷移を適用せずに nil(誤った到達日を保存しないため)。
+    private func attempt(on day: CalendarDay) async throws -> DailySummary? {
+        let loaded = try planStore.load()
+        let firstDay = loaded.map { $0.roadmap.startDay.adding(days: -(SevenDayAverage.windowDays - 1)) }
         let from = firstDay?.startDate(in: calendar) ?? Date.distantPast
         let to = day.adding(days: 1).startDate(in: calendar)
 
         let weights = DailyWeightResolver.resolve(try await health.weightSamples(from: from, to: to), calendar: calendar)
         let bodyFats = DailyBodyFatResolver.resolve(try await health.bodyFatSamples(from: from, to: to), calendar: calendar)
         let average = SevenDayAverage(endingOn: day, in: weights)
+
+        // 取得を待つ間にカードの操作で記録が変わっていることがあるので、保存時点の最新の記録に対して遷移を適用する
+        var replaced = false
+        let record: PlanRecord? = try planStore.update { record in
+            if loaded?.roadmap.startDay == record.roadmap.startDay {
+                record = Self.progressed(record, weights: weights, through: day, settings: settings)
+            } else {
+                replaced = true
+            }
+        }
+        if (loaded == nil) != (record == nil) { replaced = true }
+        if replaced { return nil }
 
         var summary = DailySummary(
             day: day,
@@ -75,6 +108,18 @@ struct DailySummaryBuilder: Sendable {
             summary.plan = planStatus(record: record, on: day, weights: weights, average: average)
         }
         return summary
+    }
+
+    /// 自動遷移(最初の区切り、到達、卒業)を反映した記録を返す(純粋)。
+    static func progressed(_ record: PlanRecord, weights: [DailyWeight], through day: CalendarDay, settings: PlanSettings) -> PlanRecord {
+        var updated = record
+        if updated.firstMilestoneReachedOn == nil,
+           let reached = updated.roadmap.firstMilestoneReachedDay(phase: updated.phase, weights: weights, through: day) {
+            updated.recordFirstMilestone(on: reached)
+        }
+        let progression = PhaseProgression.advance(phase: updated.phase, roadmap: updated.roadmap, weights: weights, through: day, settings: settings)
+        if !progression.steps.isEmpty { updated.apply(progression) }
+        return updated
     }
 
     private func history(from: CalendarDay, to: CalendarDay, weights: [DailyWeight], phase: PlanPhase?) -> [DailyPoint] {
@@ -97,9 +142,7 @@ struct DailySummaryBuilder: Sendable {
         case .maintenanceMode: stageNumber = nil
         }
         var status = PlanStatus(
-            roadmap: roadmap,
-            phase: phase,
-            firstMilestoneReachedOn: record.firstMilestoneReachedOn,
+            record: record,
             stageNumber: stageNumber,
             guideline: Guideline.expectedWeight(phase: phase, on: day, settings: settings),
             progress: nil, actualPace: nil, maintenance: nil, maintenanceNotice: nil,
