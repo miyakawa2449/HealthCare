@@ -34,8 +34,10 @@
 | 8 | `declinePlanReview(on:)` | `declinedPlanReviewOn == day` |
 | 9 | `revertToOriginalPlan()`(同じステージの減量中) | `roadmap/phase` が採用前に戻り、original は nil |
 | 10 | `revertToOriginalPlan()` を維持期間で | `notApplicable` |
+| 10b | `revertToOriginalPlan()` のあと | `declinedPlanReviewOn == 当日`。戻した直後の `HomeCards` に見直しのカードが出ず、14日後に出る(03-decisions.md #4 の追加) |
 | 11 | `dismissEvent(id)` | その出来事だけ消える |
 | 12 | 保存と読み込み | 新しい項目を含めて往復で等しい。項目のない JSON は nil で読める(schemaVersion 1) |
+| 13 | フェーズ4の形の plan.json(テストのフィクスチャ。新しい項目なし、2026-10-24 開始)をデコード | 読めて、`events == nil`、`originalPhase == nil`、`roadmap.startDay == 2026-10-24`(03-decisions.md #10 の追加) |
 
 ## C. アプリ: `DailySummaryBuilder` の遷移の適用
 
