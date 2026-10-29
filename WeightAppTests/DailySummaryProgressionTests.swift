@@ -66,6 +66,45 @@ struct DailySummaryProgressionTests {
         #expect(try store.load()?.phase == first.phase)
     }
 
+    @Test("取得の途中で開始日の早い計画に差し替わったら、取得からやり直して正しい到達日を保存する")
+    func planReplacedDuringFetch() async throws {
+        let store = try makeStore()
+        let today = CalendarDay(date: Date(), calendar: cal)
+        let earlyStart = today.adding(days: -20)   // 到達から28日未満なので卒業はしない
+        let lateStart = today.adding(days: -5)
+        let late = Roadmap(startWeight: 123.5, startDay: lateStart, targetWeight: 67.4, settings: s)
+        try store.save(PlanRecord(roadmap: late, phase: late.initialPhase!, originalRoadmap: nil, declinedEarlyArrivalOn: nil))
+        // 体重はずっと 111.0 → 早い計画なら開始日に到達している
+        let health = DelayedHealthStore(weights: samples(from: earlyStart.adding(days: -6), days: 27, 111.0), delays: [.milliseconds(300), .zero])
+        let builder = DailySummaryBuilder(health: health, planStore: store, calendar: cal, settings: s)
+        let building = Task { try await builder.build(on: today) }
+        try await Task.sleep(for: .milliseconds(50))
+        let early = Roadmap(startWeight: 123.5, startDay: earlyStart, targetWeight: 67.4, settings: s)
+        try store.save(PlanRecord(roadmap: early, phase: early.initialPhase!, originalRoadmap: nil, declinedEarlyArrivalOn: nil))
+        let summary = try await building.value
+        let saved = try #require(try store.load())
+        #expect(saved.phase == .maintaining(stage: 1, arrival: StageOrigin(weight: 111.0, day: earlyStart)))
+        #expect(saved.firstMilestoneReachedOn == earlyStart)
+        #expect(summary.plan?.record == saved)
+        #expect(summary.recordedWeights.first?.day == earlyStart.adding(days: -6))
+    }
+
+    @Test("取得の途中で計画が消えたら、全履歴を取り直して計画なしの summary にする")
+    func planRemovedDuringFetch() async throws {
+        let store = try makeStore()
+        let today = CalendarDay(date: Date(), calendar: cal)
+        let roadmap = Roadmap(startWeight: 123.5, startDay: today.adding(days: -10), targetWeight: 67.4, settings: s)
+        try store.save(PlanRecord(roadmap: roadmap, phase: roadmap.initialPhase!, originalRoadmap: nil, declinedEarlyArrivalOn: nil))
+        let health = DelayedHealthStore(weights: samples(from: today.adding(days: -60), days: 61, 120.0), delays: [.milliseconds(300), .zero])
+        let builder = DailySummaryBuilder(health: health, planStore: store, calendar: cal, settings: s)
+        let building = Task { try await builder.build(on: today) }
+        try await Task.sleep(for: .milliseconds(50))
+        try FileManager.default.removeItem(at: store.fileURL)
+        let summary = try await building.value
+        #expect(summary.plan == nil)
+        #expect(summary.recordedWeights.count == 61)
+    }
+
     @Test("維持期間で28日範囲内なら卒業して次のステージへ。出来事 graduated")
     func graduation() async throws {
         let store = try makeStore()

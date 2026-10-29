@@ -55,6 +55,16 @@ struct DailySummaryBuilder: Sendable {
     /// 計画があれば開始日の6日前から、なければ全履歴を取得する(初回設定で最初の記録の日まで開始日を遡れるように。04-screens/03-decisions.md #12)。
     /// 計画があれば、取得のあとに自動遷移(最初の区切り、到達、卒業)を反映して保存し、それを基準に判定する(05-cards/01-design.md 3.)。
     func build(on day: CalendarDay) async throws -> DailySummary {
+        // 取得を待つ間に計画が差し替わる(開始日が変わる、消える)と取得範囲が合わなくなるので、その場合は取得からやり直す
+        for _ in 0..<2 {
+            if let summary = try await attempt(on: day, retryIfPlanReplaced: true) { return summary }
+        }
+        return try await attempt(on: day, retryIfPlanReplaced: false)!
+    }
+
+    /// 1回分の 取得 → 遷移の適用 → 判定。取得中に計画の有無か開始日が変わっていたら、`retryIfPlanReplaced` なら nil、
+    /// そうでなければ遷移を適用せずに最新の記録で組み立てる(誤った到達日を保存しないため)。
+    private func attempt(on day: CalendarDay, retryIfPlanReplaced: Bool) async throws -> DailySummary? {
         let loaded = try planStore.load()
         let firstDay = loaded.map { $0.roadmap.startDay.adding(days: -(SevenDayAverage.windowDays - 1)) }
         let from = firstDay?.startDate(in: calendar) ?? Date.distantPast
@@ -63,10 +73,18 @@ struct DailySummaryBuilder: Sendable {
         let weights = DailyWeightResolver.resolve(try await health.weightSamples(from: from, to: to), calendar: calendar)
         let bodyFats = DailyBodyFatResolver.resolve(try await health.bodyFatSamples(from: from, to: to), calendar: calendar)
         let average = SevenDayAverage(endingOn: day, in: weights)
+
         // 取得を待つ間にカードの操作で記録が変わっていることがあるので、保存時点の最新の記録に対して遷移を適用する
-        let record = loaded == nil ? nil : try planStore.update { record in
-            record = Self.progressed(record, weights: weights, through: day, settings: settings)
+        var replaced = false
+        let record: PlanRecord? = try planStore.update { record in
+            if loaded?.roadmap.startDay == record.roadmap.startDay {
+                record = Self.progressed(record, weights: weights, through: day, settings: settings)
+            } else {
+                replaced = true
+            }
         }
+        if (loaded == nil) != (record == nil) { replaced = true }
+        if replaced && retryIfPlanReplaced { return nil }
 
         var summary = DailySummary(
             day: day,
