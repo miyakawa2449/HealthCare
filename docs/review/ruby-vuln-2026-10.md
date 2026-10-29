@@ -234,3 +234,301 @@ ruby -e 'puts %w[resolv zlib erb].map { |n|
 - Jekyllの入力が自分で管理する文書だけか、外部PR・ダウンロードデータなど信頼できない内容もローカルまたはCIでビルドするか。後者なら脅威度が上がります。
 - Dependabot/Renovateなどを導入するか、月次の手動 `bundler-audit` で運用するか。
 - `.ruby-version` 更新とJekyllビルド検証を、別の小さな作業単位として実施・コミットするか。
+
+
+---
+
+# 第2回: 実施後の検証依頼と回答(2026-10-30)
+
+`codex exec -s read-only -c model_reasoning_effort=medium`(portfolio_rb リポジトリ内で実行、Web 検索なし)。
+
+## 依頼文(Claude Code 作成)
+
+# 検証依頼: Ruby 3.4.12 への更新(portfolio_rb)と端末環境の対策
+
+あなたは検証担当(Codex)です。ファイルは書き換えず、検証結果と指摘だけを書いてください。
+先ほどあなたが出した対策案(Ruby 3.4.12 採用、ruby-build 更新、Jekyll の .ruby-version 更新)に沿って Claude Code が実施しました。
+このリポジトリ(~/development/portfolio_rb、Rails 8.1.4、本番は Docker Compose で Dockerfile.production を使用、AWS Lightsail で稼働中)の
+ブランチ chore/ruby-3.4.12(コミット c2b3b17、main からの差分)を検証してください。読み取り専用で、git diff main...HEAD やファイルの閲覧はできます。
+
+## 実施内容
+
+```
+diff --git a/.github/workflows/security-audit.yml b/.github/workflows/security-audit.yml
+index a594e4c..b70affa 100644
+--- a/.github/workflows/security-audit.yml
++++ b/.github/workflows/security-audit.yml
+@@ -21,7 +21,7 @@ jobs:
+       - name: Set up Ruby
+         uses: ruby/setup-ruby@v1
+         with:
+-          ruby-version: '3.4.7'
++          ruby-version: '3.4.12'
+           bundler-cache: true
+ 
+       - name: Run Brakeman
+@@ -70,7 +70,7 @@ jobs:
+       - name: Set up Ruby
+         uses: ruby/setup-ruby@v1
+         with:
+-          ruby-version: '3.4.7'
++          ruby-version: '3.4.12'
+           bundler-cache: true
+ 
+       - name: Update bundler-audit database
+diff --git a/.ruby-version b/.ruby-version
+index 2aa5131..25e8632 100644
+--- a/.ruby-version
++++ b/.ruby-version
+@@ -1 +1 @@
+-3.4.7
++3.4.12
+diff --git a/Dockerfile b/Dockerfile
+index ca66888..007114a 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -8,7 +8,7 @@
+ # For a containerized dev environment, see Dev Containers: https://guides.rubyonrails.org/getting_started_with_devcontainer.html
+ 
+ # Make sure RUBY_VERSION matches the Ruby version in .ruby-version
+-ARG RUBY_VERSION=3.4.7
++ARG RUBY_VERSION=3.4.12
+ FROM docker.io/library/ruby:$RUBY_VERSION-slim AS base
+ 
+ # Rails app lives here
+diff --git a/Dockerfile.production b/Dockerfile.production
+index b4fa5ec..86df829 100644
+--- a/Dockerfile.production
++++ b/Dockerfile.production
+@@ -1,7 +1,7 @@
+ # syntax=docker/dockerfile:1
+ # check=error=true
+ 
+-ARG RUBY_VERSION=3.4.7
++ARG RUBY_VERSION=3.4.12
+ ARG NODE_VERSION=22
+ FROM docker.io/library/ruby:$RUBY_VERSION-slim AS base
+ 
+```
+
+## Claude Code が得た証拠
+- `docker build -f Dockerfile.production -t portfolio_rb:ruby-3.4.12-check .` は成功(exit 0)。
+- イメージ内で確認:
+  - ruby 3.4.12 (2026-10-23 revision 366f5fdc00) +PRISM [aarch64-linux]
+  - resolv 0.7.2 / zlib 3.2.3 / erb 4.0.4.1
+  - Bundler 2.6.9(Gemfile.lock の BUNDLED WITH と一致)
+- ローカル(rbenv 3.4.12、macOS)で `bin/rails db:test:prepare && bundle exec rspec --no-fail-fast`:
+  1291 examples, 0 failures, 22 pending。CI と同じ暗号化キーの環境変数と Postgres 17(docker compose の db)を使用。
+  yarn が端末になくアセットの再ビルドはしていない(app/assets/builds に既存のビルド成果物があり、それで実行)。
+- bundle install で Gemfile.lock に arm64-darwin-27 のプラットフォーム追加だけが入ったが、コミットからは外した。
+- 端末側: ruby-build 20261023、rbenv global 3.4.12、~/.ruby-version 3.4.12、Bundler 2.6.9 と 4.0.14 を導入。
+  Jekyll(~/dev/jekyll/yomishirube-doc)は .ruby-version を 3.4.12 にし、bundle check と jekyll build 成功(Gemfile.lock 変更なし)。
+- GitHub Actions は push 直後で結果待ち。
+
+## 検証してほしいこと
+1. 差分に漏れがないか。リポジトリ内で Ruby の版を参照している箇所(Dockerfile 以外の Dockerfile.*、compose、CI、.tool-versions、mise、devcontainer、Gemfile の ruby 指定、docs 以外の設定)を探して、3.4.7 のまま残っていて動作に影響するものがあれば指摘する。docs 配下の記述は対象外でよい。
+2. Dockerfile.production を読み、ruby:3.4.12-slim へ変えたことで壊れうる点(apt パッケージ、bootsnap、jemalloc、ユーザー、エントリポイント)がないか。
+3. 本番反映の手順として `scripts/deploy.sh --keep-ssl` を使う想定。スクリプトを読んで、イメージが確実に再ビルドされるか(--no-cache や build の有無、古いイメージが使われる可能性)、ダウンタイムやデータ消失のリスク、実行前後に確認すべきコマンドを指摘する。
+4. テスト証拠の妥当性。アセット未再ビルドで RSpec を回したことが検証として弱い点があれば指摘する。
+5. 他に、この更新と同時にやるべき小さなこと(例: security-audit.yml 以外の ruby-version、Dependabot の Docker 監視設定)があれば提案する。既存の方針を大きく変える提案は不要。
+
+## 出力形式
+- 指摘は重要度(高/中/低)、該当ファイルと行、問題の内容、根拠、修正案の順。
+- 問題がなければ「問題なし」と明記。推測で断定せず、確認できないことは「未確認」と書く。
+- 最後に「本番反映の推奨手順(順番つき)」と「人間に判断してもらう点」をまとめる。
+
+
+## Codex の回答(原文)
+
+## 検証結果
+
+コミット `c2b3b17` の `main...HEAD` 差分は提示どおり4ファイルのみで、`git diff --check` も問題ありません。Ruby 3.4.12 への本番更新を阻止する高重要度の問題は見つかりませんでした。
+
+ただし、本番反映前に対応・確認すべき中重要度の項目があります。
+
+## 指摘事項
+
+### 1. 中 — 現在の作業ツリーがコミットどおりではない
+
+- 該当ファイルと行: [Gemfile.lock](/Users/tsuyoshi/development/portfolio_rb/Gemfile.lock:728)
+- 問題の内容: `arm64-darwin-27` の追加がコミットから外れている一方、現在の作業ツリーには未コミット変更として残っています。
+- 根拠: `git status` は `M Gemfile.lock`。`git diff` では `arm64-darwin-27` が1行追加されています。Dockerfile.production は `COPY Gemfile Gemfile.lock vendor ./` するため、この作業ツリーからビルドすると `c2b3b17` そのものではないイメージになります。
+- 修正案: Lightsail上でデプロイ前に `git status --porcelain` が空であることを必須確認してください。ローカル変更を持ち込む場合は、採用するか破棄するかを明示的に決めてからビルドしてください。プラットフォーム追加自体は通常無害ですが、再現性の問題です。
+
+### 2. 中 — `--keep-ssl` でも明確なダウンタイムが発生する
+
+- 該当ファイルと行: [scripts/deploy.sh](/Users/tsuyoshi/development/portfolio_rb/scripts/deploy.sh:240)、[scripts/deploy.sh](/Users/tsuyoshi/development/portfolio_rb/scripts/deploy.sh:420)
+- 問題の内容: `--keep-ssl` は証明書・https-portalを維持する機能であり、無停止デプロイではありません。DB、Web、Worker、nginxをすべて停止し、最後にhttps-portalも再起動します。
+- 根拠: `stop_services_except_ssl` が4サービスを順番に停止し、起動時にはnginxのIP再解決のためhttps-portalを再起動します。停止中はHTTPSポートが開いていてもバックエンドへ接続できず、502等になる可能性があります。自動ロールバックもありません。
+- 修正案: メンテナンス時間を確保し、事前バックアップと旧イメージIDを記録してください。今回のRuby更新だけならDB停止は技術的には不要ですが、既存方針を変えないなら短時間の停止を許容して実施します。
+
+### 3. 中 — デプロイ成功判定がプロセスの “Up” に留まる
+
+- 該当ファイルと行: [scripts/deploy.sh](/Users/tsuyoshi/development/portfolio_rb/scripts/deploy.sh:146)、[scripts/deploy.sh](/Users/tsuyoshi/development/portfolio_rb/scripts/deploy.sh:441)
+- 問題の内容: Web/Worker/DBの確認は `docker compose ps` の `Up` 判定です。RailsのHTTP応答やDBのreadiness、ジョブ処理能力を保証しません。
+- 根拠: `wait_for_web_up` は `/up` を呼ばず、DBも `pg_isready` ではなくコンテナ状態を確認して3秒待つだけです。DB接続は後続のRails runnerで確認されますが、外部HTTPS応答は確認されません。
+- 修正案: デプロイ後に最低限、外部から `curl -f https://miyakawa.codes/up`、Rails runner、Workerログ、`db:migrate:status` を確認してください。将来的にはスクリプトの成功条件にもHTTPヘルスチェックを追加するのが安全です。
+
+### 4. 低 — ビルドは行われるが、最新の同一タグを取得する保証はない
+
+- 該当ファイルと行: [scripts/deploy.sh](/Users/tsuyoshi/development/portfolio_rb/scripts/deploy.sh:411)
+- 問題の内容: `dc build` は実行されますが、`--pull` も `--no-cache` もありません。
+- 根拠: `3.4.7` から `3.4.12` へのARG変更により `FROM` 以降は再評価されるため、旧3.4.7イメージがそのまま使われる可能性は基本的にありません。`--no-cache` は不要です。ただしローカルにある `ruby:3.4.12-slim` が使われ、同じタグに後日反映されたDebian側の修正を取り込まない可能性があります。
+- 修正案: 本番反映前に一度、`docker compose ... build --pull portfolio-web portfolio-worker` を実行してください。その後のスクリプト内 `dc build` はキャッシュ利用で短時間になります。
+
+### 5. 低 — 開発用Dockerfileは厳密には3.4.12固定ではない
+
+- 該当ファイルと行: [Dockerfile.dev](/Users/tsuyoshi/development/portfolio_rb/Dockerfile.dev:2)、[Dockerfile.dev.simple](/Users/tsuyoshi/development/portfolio_rb/Dockerfile.dev.simple:2)
+- 問題の内容: `FROM ruby:3.4` の可変タグです。`docker-compose.yml` は `Dockerfile.dev.simple` を使用します。
+- 根拠: 3.4.7の残存ではありませんが、再ビルド時期によって3.4系の異なるパッチ版になる可能性があります。
+- 修正案: 開発コンテナも完全一致させる方針なら `ruby:3.4.12` に固定します。本番には影響しないため、今回のマージを止める問題ではありません。
+
+### 6. 低 — Gemfile自身にはRubyバージョン制約がない
+
+- 該当ファイルと行: [Gemfile](/Users/tsuyoshi/development/portfolio_rb/Gemfile:1)
+- 問題の内容: `.ruby-version`、Dockerfile、CIは揃っていますが、Bundler自身は別Rubyでの実行を明示的に拒否しません。
+- 根拠: Gemfileに `ruby` 指定がありません。CIの通常ワークフローは `ruby/setup-ruby` が `.ruby-version` を読むため、現状でも3.4.12になります。
+- 修正案: 任意対応として `ruby file: ".ruby-version"` 等を追加できます。ただしGemfile.lockにもRuby情報が追加されるため、別コミットにするのが分かりやすいです。
+
+### 7. 低 — DockerのDependabot監視がない。ただしRuby ARGは監視できない
+
+- 該当ファイルと行: [.github/dependabot.yml](/Users/tsuyoshi/development/portfolio_rb/.github/dependabot.yml:1)
+- 問題の内容: Bundler、npm、GitHub Actionsのみで、Docker ecosystemがありません。
+- 根拠: Docker監視を追加すればComposeのPostgreSQL/nginx等には役立ちます。ただしGitHub公式仕様上、Dockerfileの `ARG` で指定されたイメージは更新されず、マルチステージにも制約があります。[GitHub公式の制約説明](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/manage-your-dependency-security/configure-private-registries)
+- 修正案: Composeイメージ監視目的でDocker ecosystemを週次追加するのは有効です。現在の `ARG RUBY_VERSION` は別途、人手または独自チェックで追跡してください。
+
+## 差分漏れの確認結果
+
+以下は問題なしです。
+
+- `.ruby-version`: 3.4.12
+- `Dockerfile`: 3.4.12
+- `Dockerfile.production`: 3.4.12
+- `security-audit.yml`: 2ジョブとも3.4.12
+- `ci.yml`: 明示指定はないものの、`ruby/setup-ruby` が `.ruby-version` を使用
+- Composeファイル: Rubyバージョンの重複指定なし
+- Gemfile: 古いバージョン指定なし
+- `.tool-versions`、mise設定、追跡対象devcontainer設定: 存在しない
+- docs外の実行設定に残る `3.4.7`: なし
+
+READMEと `.gemini-context.md` には3.4.7表記が残っていますが、実行には影響しません。必要なら表示・AI向けコンテキストの整合性のため別途更新してください。
+
+## Dockerfile.productionの評価
+
+Ruby 3.4.12への変更によって生じる明確な問題はありません。
+
+- aptパッケージ: ARM環境での本番イメージビルド成功により、少なくともaarch64では解決済み。
+- bootsnap: gemsとアプリコードの両方を新イメージ内で再precompileしており問題なし。
+- jemalloc: `uname -m` を使ってmultiarchパスへのsymlinkを作る構成で、ARMビルド成功の証拠あり。
+- 非rootユーザー: Ruby更新による影響なし。
+- entrypoint/CMD: Ruby更新による変更なし。
+- アセット: 本番Dockerビルド内で `yarn install`、CSS/JS build、`assets:precompile` を新規実行しており問題なし。
+
+ただし、提示されたビルドは `aarch64-linux` です。Lightsailの実アーキテクチャがx86_64なら、そのアーキテクチャでのビルド・起動は未確認です。公式Rubyイメージと現在のjemallocパス構築からは動作すると考えられますが、本番サーバー上のビルドで最終確認してください。
+
+## テスト証拠の評価
+
+1291件・失敗0は十分に強い回帰テスト証拠です。暗号化キーとPostgreSQL 17をCI相当に合わせている点も妥当です。
+
+ローカルでアセットを再ビルドしなかった点だけを見ると、system specが古いJS/CSS成果物を使った可能性があります。ただし今回は:
+
+- Rubyパッチ更新だけでフロントエンドソース変更なし
+- 本番Dockerビルドがアセットをゼロから正常生成
+- CIでは `yarn install` とCSS/JS build後にRSpecを実行
+
+という構成なので、CIが成功すれば実質的な不足は解消されます。
+
+一方、Dockerビルド成功はENTRYPOINT/CMDによるRails起動まで証明しません。GitHub Actionsの結果はこの検証環境からAPIへ接続できず未確認です。マージ・本番反映はCI成功後を推奨します。
+
+## 本番反映の推奨手順（順番つき）
+
+1. Lightsail上で対象コミットとクリーン状態を確認する。
+
+```bash
+git rev-parse HEAD
+git status --porcelain
+```
+
+HEADが `c2b3b170e2c08a4e5da2bebf3bf799cdf28a0a23`、statusが空であることを確認します。
+
+2. GitHub Actionsの全必須ジョブ成功を確認する。現時点では未確認です。
+
+3. 現状と復旧用情報を記録する。
+
+```bash
+docker compose --env-file .env.production -p portfolio-prod \
+  -f docker-compose.production.yml ps -a
+
+docker images --no-trunc | grep portfolio-prod
+docker volume ls | grep portfolio-prod
+```
+
+4. PostgreSQLバックアップを取得し、生成物が空でないことを確認する。
+
+```bash
+docker compose --env-file .env.production -p portfolio-prod \
+  -f docker-compose.production.yml exec -T portfolio-db \
+  pg_dump -U portfolio -d portfolio_production > /安全な保存先/portfolio_before_ruby_3_4_12.sql
+```
+
+5. 最新ベースを取得して、停止前にビルドする。
+
+```bash
+docker compose --env-file .env.production -p portfolio-prod \
+  -f docker-compose.production.yml \
+  build --pull portfolio-web portfolio-worker
+```
+
+`--no-cache` は通常不要です。
+
+6. 新イメージを停止前に簡易確認する。
+
+```bash
+docker compose --env-file .env.production -p portfolio-prod \
+  -f docker-compose.production.yml \
+  run --rm --no-deps --entrypoint ruby portfolio-web -v
+```
+
+3.4.12であることを確認します。
+
+7. ダウンタイムを開始し、既存スクリプトで反映する。
+
+```bash
+./scripts/deploy.sh --keep-ssl
+```
+
+`--recreate` は通常不要です。新しいイメージIDをComposeが検出すればWeb/Workerは再作成されます。
+
+8. コンテナ内の実バージョンとDB状態を確認する。
+
+```bash
+docker compose --env-file .env.production -p portfolio-prod \
+  -f docker-compose.production.yml exec -T portfolio-web ruby -v
+
+docker compose --env-file .env.production -p portfolio-prod \
+  -f docker-compose.production.yml exec -T portfolio-web \
+  bundle exec rails db:migrate:status
+```
+
+9. 内外の動作確認を行う。
+
+```bash
+curl -fS https://miyakawa.codes/up
+
+docker compose --env-file .env.production -p portfolio-prod \
+  -f docker-compose.production.yml logs --tail=200 portfolio-web portfolio-worker nginx
+```
+
+管理画面ログイン、画像表示・アップロード、代表ページ、バックグラウンドジョブも手動確認してください。
+
+## 人間に判断してもらう点
+
+- `--keep-ssl` 中の短時間ダウンタイムを許容できる時間帯
+- LightsailがARMかx86_64か、および実機ビルド結果
+- 未コミットの `arm64-darwin-27` をGemfile.lockへ正式採用するか
+- 開発用Dockerfileも3.4.12へ固定するか
+- GemfileにRuby制約を追加するか
+- Docker DependabotをComposeイメージ監視目的で追加するか
+- GitHub Actionsがすべて成功したか
+
+総合判定は「CI成功、サーバー側作業ツリーがクリーン、事前バックアップあり」を条件に本番反映可能です。
