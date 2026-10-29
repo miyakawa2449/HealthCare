@@ -19,8 +19,9 @@ struct RoadmapRowsTests {
         let rows = RoadmapRows.make(record: record(roadmap.initialPhase!), on: start.adding(days: 10))
         #expect(rows.stages.count == 6)
         #expect(rows.stages.map(\.number) == [1, 2, 3, 4, 5, 6])
-        #expect(rows.stages[0].status == .current)
-        #expect(rows.stages[0].firstMilestone == .init(weight: 117.3, reachedOn: nil))
+        #expect(rows.stages[0].status == .current(estimatedArrival: roadmap.stages[0].estimatedArrival))
+        let milestoneDays = Pace.days(toReach: 117.3 / 123.5, monthlyRate: s.monthlyRate, settings: s)
+        #expect(rows.stages[0].firstMilestone == .init(weight: 117.3, reachedOn: nil, estimatedArrival: start.adding(days: milestoneDays)))
         #expect(rows.stages[1].firstMilestone == nil)
         for st in rows.stages.dropFirst() { #expect(st.status == .estimated(roadmap.stages[st.number - 1].estimatedArrival)) }
         #expect(rows.stages.map(\.maintenance) == [.upcoming, .upcoming, .upcoming, .upcoming, .upcoming, nil])
@@ -34,7 +35,7 @@ struct RoadmapRowsTests {
     @Test("最初の区切りに届いた日が入る")
     func milestoneReached() {
         let rows = RoadmapRows.make(record: record(roadmap.initialPhase!, milestone: start.adding(days: 60)), on: start.adding(days: 70))
-        #expect(rows.stages[0].firstMilestone == .init(weight: 117.3, reachedOn: start.adding(days: 60)))
+        #expect(rows.stages[0].firstMilestone == .init(weight: 117.3, reachedOn: start.adding(days: 60), estimatedArrival: nil))
     }
 
     @Test("ステージ1の維持期間: 1 は到達日、維持期間は「いまここ(到達から n日目)」")
@@ -66,7 +67,7 @@ struct RoadmapRowsTests {
         #expect(rows.stages[0].maintenance == .ended(nil))   // ステージ2の起点は保存していないので日付なし
         #expect(rows.stages[1].status == .arrived(a2Day))
         #expect(rows.stages[1].maintenance == .ended(a2Day.adding(days: 30)))
-        #expect(rows.stages[2].status == .current)
+        #expect(rows.stages[2].status == .current(estimatedArrival: r.stages[2].estimatedArrival))
         #expect(rows.stages[2].maintenance == .upcoming)
         #expect(rows.stages[3].status == .estimated(r.stages[3].estimatedArrival))
     }
@@ -98,7 +99,10 @@ struct RoadmapRowsTests {
         try rec.adoptPlanReview(sevenDayAverage: 121.0, on: day)
         let rows = RoadmapRows.make(record: rec, on: day.adding(days: 1))
         #expect(rows.revert == .init(stage: 1, current: rec.roadmap.stages[0].estimatedArrival, original: roadmap.stages[0].estimatedArrival))
-        #expect(rows.stages[0].status == .current)
+        #expect(rows.stages[0].status == .current(estimatedArrival: rec.roadmap.stages[0].estimatedArrival))
+        // 最初の区切りの到達予定も新しい起点(121.0、day)から計算し直す
+        let milestoneDays = Pace.days(toReach: 117.3 / 121.0, monthlyRate: s.monthlyRate, settings: s)
+        #expect(rows.stages[0].firstMilestone?.estimatedArrival == day.adding(days: milestoneDays))
     }
 
     @Test("ペースの判定は月2%を週に換算して無理がない")

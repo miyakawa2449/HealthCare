@@ -65,27 +65,41 @@ struct RoadmapView: View {
 
     // MARK: 行
 
+    /// ステージの行。1行目: 「ステージn」と状態(いまここ / 到達 / 到達予定)、2行目: 開始 → 区切りの体重と、今のステージなら到達予定。
+    /// 「ステージn」と状態は折り返さない(fixedSize)。
     @ViewBuilder
     private func stageRows(_ stage: RoadmapRows.StageRow) -> some View {
-        let current = stage.status == .current
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
                 Text("ステージ\(stage.number)")
                     .font(.headline)
-                    .foregroundStyle(current ? AppTheme.accent : .primary)
-                Text("\(DisplayFormat.kilogramsNumber(stage.startWeight)) → \(DisplayFormat.kilograms(stage.boundaryWeight))")
-                    .font(.subheadline)
-                Spacer()
+                    .foregroundStyle(stage.isCurrent ? AppTheme.accent : .primary)
+                    .fixedSize()
+                Spacer(minLength: 8)
                 Text(statusText(stage.status))
                     .font(.footnote)
-                    .foregroundStyle(current ? AppTheme.accent : AppTheme.secondaryText)
+                    .foregroundStyle(stage.isCurrent ? AppTheme.accent : AppTheme.secondaryText)
+                    .fixedSize()
+            }
+            HStack(alignment: .firstTextBaseline) {
+                Text("\(DisplayFormat.kilogramsNumber(stage.startWeight)) → \(DisplayFormat.kilograms(stage.boundaryWeight))")
+                    .font(.subheadline)
+                Spacer(minLength: 8)
+                if case .current(let estimated) = stage.status {
+                    Text("到達予定 \(DisplayFormat.approximateDate(estimated))")
+                        .font(.footnote)
+                        .foregroundStyle(AppTheme.secondaryText)
+                        .fixedSize()
+                }
             }
             if let milestone = stage.firstMilestone {
-                HStack {
+                HStack(alignment: .firstTextBaseline) {
                     Text("最初の区切り \(DisplayFormat.kilograms(milestone.weight))")
-                    Spacer()
+                    Spacer(minLength: 8)
                     if let reached = milestone.reachedOn {
-                        Text("届いた \(DisplayFormat.fullDate(reached))")
+                        Text("届いた \(DisplayFormat.fullDate(reached))").fixedSize()
+                    } else if let estimated = milestone.estimatedArrival {
+                        Text("到達予定 \(DisplayFormat.approximateDate(estimated))").fixedSize()
                     }
                 }
                 .font(.footnote)
@@ -94,11 +108,9 @@ struct RoadmapView: View {
             }
         }
         .padding(.vertical, 10)
+        Divider()
         if let maintenance = stage.maintenance {
-            Divider()
             maintenanceRow(maintenance)
-            Divider()
-        } else {
             Divider()
         }
     }
@@ -115,14 +127,16 @@ struct RoadmapView: View {
     }
 
     private func subRow(label: String, detail: String, current: Bool) -> some View {
-        HStack {
+        HStack(alignment: .firstTextBaseline) {
             Text(label)
                 .font(.subheadline)
                 .foregroundStyle(current ? AppTheme.accent : AppTheme.secondaryText)
-            Spacer()
+                .fixedSize()
+            Spacer(minLength: 8)
             Text(detail)
                 .font(.footnote)
                 .foregroundStyle(current ? AppTheme.accent : AppTheme.secondaryText)
+                .multilineTextAlignment(.trailing)
         }
         .padding(.vertical, 8)
         .padding(.leading, 12)
@@ -130,12 +144,13 @@ struct RoadmapView: View {
 
     private var targetRow: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text("最終目標").font(.headline)
+            Text("最終目標").font(.headline).fixedSize()
             Text(DisplayFormat.kilograms(rows.target.weight)).font(.subheadline)
-            Spacer()
+            Spacer(minLength: 8)
             Text(statusText(rows.target.status))
                 .font(.footnote)
                 .foregroundStyle(AppTheme.secondaryText)
+                .fixedSize()
         }
         .padding(.vertical, 10)
     }

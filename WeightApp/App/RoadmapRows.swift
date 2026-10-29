@@ -6,8 +6,8 @@ struct RoadmapRows: Equatable {
     enum StageStatus: Equatable {
         /// 到達した日。
         case arrived(CalendarDay)
-        /// 今このステージの減量中。
-        case current
+        /// 今このステージの減量中。到達予定日つき。
+        case current(estimatedArrival: CalendarDay)
         /// 到達予定。
         case estimated(CalendarDay)
     }
@@ -24,6 +24,8 @@ struct RoadmapRows: Equatable {
     struct FirstMilestone: Equatable {
         var weight: Double
         var reachedOn: CalendarDay?
+        /// 届く前(ステージ1の減量中)だけ。起点から標準ペースで計算し、計画見直しを採用すれば起点とともに変わる。
+        var estimatedArrival: CalendarDay?
     }
 
     struct StageRow: Equatable, Identifiable {
@@ -36,6 +38,7 @@ struct RoadmapRows: Equatable {
         /// 最終ステージは nil(維持期間ではなく維持モードへ)。
         var maintenance: MaintenanceStatus?
         var id: Int { number }
+        var isCurrent: Bool { if case .current = status { return true } else { return false } }
     }
 
     struct Target: Equatable {
@@ -87,7 +90,7 @@ struct RoadmapRows: Equatable {
             let n = stage.number
             let status: StageStatus
             if n <= arrivedUpTo { status = .arrived(stage.estimatedArrival) }
-            else if n == currentLosing { status = .current }
+            else if n == currentLosing { status = .current(estimatedArrival: stage.estimatedArrival) }
             else { status = .estimated(stage.estimatedArrival) }
 
             var maintenance: MaintenanceStatus?
@@ -100,7 +103,12 @@ struct RoadmapRows: Equatable {
                     maintenance = .upcoming
                 }
             }
-            let milestone: FirstMilestone? = n == 1 ? FirstMilestone(weight: roadmap.firstMilestoneWeight, reachedOn: record.firstMilestoneReachedOn) : nil
+            var milestone: FirstMilestone?
+            if n == 1 {
+                let reached = record.firstMilestoneReachedOn
+                milestone = FirstMilestone(weight: roadmap.firstMilestoneWeight, reachedOn: reached,
+                                           estimatedArrival: reached == nil ? roadmap.firstMilestoneEstimatedArrival(from: phase) : nil)
+            }
             return StageRow(number: n, startWeight: stage.startWeight, boundaryWeight: stage.boundaryWeight,
                             status: status, firstMilestone: milestone, maintenance: maintenance)
         }

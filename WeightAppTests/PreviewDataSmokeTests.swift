@@ -54,7 +54,7 @@ struct PreviewDataSmokeTests {
         await settle(model)
         let rows = RoadmapRows.make(record: model.summary!.plan!.record, on: model.summary!.day)
         #expect(rows.revert != nil)
-        #expect(rows.stages[0].status == .current)
+        #expect(rows.stages[0].isCurrent)
     }
 
     @Test("維持モード")

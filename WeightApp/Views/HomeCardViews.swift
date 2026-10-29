@@ -12,7 +12,7 @@ struct HomeCardView: View {
             EventCard(event: event) { await perform(.dismiss(event.id)) }
         case .maintenanceMaximum(let canAdvance):
             ProposalCard(
-                title: "維持期間が12週間を超えました",
+                title: "12週間、体重を保ってきました",
                 text: canAdvance ? "どちらを選んでも、ここまで保てたことが成果です。" : "今日の記録が入ってから選べます。",
                 primary: .init(title: "次のステージへ進む", enabled: canAdvance) { await perform(.advanceAfterMaximum) },
                 secondary: .init(title: "維持を続ける") { await perform(.continueMaintenance) })
@@ -73,7 +73,7 @@ struct EventCard: View {
         case .firstMilestoneReached(let weight, _): "最初の区切り \(DisplayFormat.kilograms(weight)) に届きました"
         case .stageArrived(let stage, let weight): "ステージ\(stage)の区切り \(DisplayFormat.kilograms(weight)) に届きました"
         case .graduated(let toStage, _, _): "維持期間を終えて、ステージ\(toStage)に進みました"
-        case .targetReached(let weight): "最終目標 \(DisplayFormat.kilograms(weight)) に届きました"
+        case .targetReached(let weight): "最後の区切り \(DisplayFormat.kilograms(weight)) に届きました"   // ホームに「最終目標」の語は出さない(ロードマップだけ)
         }
     }
 
