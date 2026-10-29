@@ -108,9 +108,7 @@ final class HomeModel {
     /// 保存されている計画を読み、操作を適用して保存し、取り直す。
     private func mutatePlan(_ body: (inout PlanRecord) throws -> Void) async throws {
         guard let planStore else { throw PlanActionError.unavailable }
-        guard var record = try planStore.load() else { throw PlanActionError.notApplicable }
-        try body(&record)
-        try planStore.save(record)
+        guard try planStore.update(body) != nil else { throw PlanActionError.notApplicable }
         await refresh()
     }
 

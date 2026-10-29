@@ -42,6 +42,15 @@ struct PlanPhaseTests {
         #expect(roadmap.rescheduled(from: .maintaining(stage: 7, arrival: StageOrigin(weight: 60.0, day: d))) == roadmap)
     }
 
+    @Test("維持モードで計算し直すと、最終ステージの到達予定日が実際の到達日になり、他は変わらない")
+    func rescheduledForMaintenanceMode() {
+        let d = day(2029, 6, 1)
+        let r = roadmap.rescheduled(from: .maintenanceMode(arrival: StageOrigin(weight: 67.4, day: d)))
+        #expect(r.stages[5].estimatedArrival == d)
+        #expect(r.stages.dropLast().map(\.estimatedArrival) == roadmap.stages.dropLast().map(\.estimatedArrival))
+        #expect(r.stages.map(\.boundaryWeight) == roadmap.stages.map(\.boundaryWeight))
+    }
+
     @Test("次のステージへ進んだ日の7日平均(丸め)と日付が、次の減量ステージの起点になる")
     func advance() {
         let maintaining = PlanPhase.maintaining(stage: 1, arrival: StageOrigin(weight: 111.2, day: day(2027, 3, 23)))
@@ -96,7 +105,10 @@ struct PlanPhaseTests {
         let b = r.rescheduled(from: maintaining)
         #expect(Array(b.stages[0..<5]) == Array(r.stages[0..<5]))
         #expect(b.stages[5].estimatedArrival == day(2029, 4, 1))
-        #expect(r.rescheduled(from: .maintenanceMode(arrival: StageOrigin(weight: 67.4, day: day(2029, 4, 1)))) == r)
+        // 維持モードも最終ステージの到達日を実際の日にする(手前は不変)
+        let c = r.rescheduled(from: .maintenanceMode(arrival: StageOrigin(weight: 67.4, day: day(2029, 4, 1))))
+        #expect(Array(c.stages[0..<5]) == Array(r.stages[0..<5]))
+        #expect(c.stages[5].estimatedArrival == day(2029, 4, 1))
     }
 
     @Test("Codable で往復できる")

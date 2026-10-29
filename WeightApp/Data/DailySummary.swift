@@ -63,7 +63,10 @@ struct DailySummaryBuilder: Sendable {
         let weights = DailyWeightResolver.resolve(try await health.weightSamples(from: from, to: to), calendar: calendar)
         let bodyFats = DailyBodyFatResolver.resolve(try await health.bodyFatSamples(from: from, to: to), calendar: calendar)
         let average = SevenDayAverage(endingOn: day, in: weights)
-        let record = try loaded.map { try progressed($0, weights: weights, through: day) }
+        // 取得を待つ間にカードの操作で記録が変わっていることがあるので、保存時点の最新の記録に対して遷移を適用する
+        let record = loaded == nil ? nil : try planStore.update { record in
+            record = Self.progressed(record, weights: weights, through: day, settings: settings)
+        }
 
         var summary = DailySummary(
             day: day,
@@ -81,8 +84,8 @@ struct DailySummaryBuilder: Sendable {
         return summary
     }
 
-    /// 自動遷移を反映する。変わっていれば保存する。
-    private func progressed(_ record: PlanRecord, weights: [DailyWeight], through day: CalendarDay) throws -> PlanRecord {
+    /// 自動遷移(最初の区切り、到達、卒業)を反映した記録を返す(純粋)。
+    static func progressed(_ record: PlanRecord, weights: [DailyWeight], through day: CalendarDay, settings: PlanSettings) -> PlanRecord {
         var updated = record
         if updated.firstMilestoneReachedOn == nil,
            let reached = updated.roadmap.firstMilestoneReachedDay(phase: updated.phase, weights: weights, through: day) {
@@ -90,7 +93,6 @@ struct DailySummaryBuilder: Sendable {
         }
         let progression = PhaseProgression.advance(phase: updated.phase, roadmap: updated.roadmap, weights: weights, through: day, settings: settings)
         if !progression.steps.isEmpty { updated.apply(progression) }
-        if updated != record { try planStore.save(updated) }
         return updated
     }
 

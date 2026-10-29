@@ -71,17 +71,24 @@ struct RoadmapRowsTests {
         #expect(rows.stages[3].status == .estimated(r.stages[3].estimatedArrival))
     }
 
-    @Test("維持モード: すべて到達済み、最終目標に到達日")
+    @Test("維持モード: すべて到達済み、最終ステージと最終目標に同じ到達日(自動遷移の結果をそのまま渡す)")
     func maintenanceMode() {
-        let day = CalendarDay(year: 2029, month: 6, day: 1)
-        let phase = roadmap.phaseOnArrival(stage: 6, sevenDayAverage: 67.4, on: day)!
-        var r = roadmap
-        r.stages[5].estimatedArrival = day
-        let rows = RoadmapRows.make(record: PlanRecord(roadmap: r, phase: phase, originalRoadmap: nil, declinedEarlyArrivalOn: nil), on: day.adding(days: 30))
-        for st in rows.stages { #expect(st.status == .arrived(r.stages[st.number - 1].estimatedArrival)) }
-        #expect(rows.stages[5].status == .arrived(day))
-        #expect(rows.target == .init(weight: 67.4, status: .arrived(day)))
-        #expect(rows.maintenanceMode == day)
+        let originDay = CalendarDay(year: 2029, month: 3, day: 1)
+        let losing = PlanPhase.losing(stage: 6, origin: StageOrigin(weight: 72.9, day: originDay))
+        let before = roadmap.rescheduled(from: losing)
+        // 起点から 70日は 70.0、その後 67.3 → 到達日は 7日平均(丸め)が 67.4 以下になる最初の日
+        let weights = (0..<100).map { i in DailyWeight(day: originDay.adding(days: i), kilograms: i < 70 ? 70.0 : 67.3, measuredAt: originDay.adding(days: i).startDate(in: AppCalendar.tokyo), source: .healthPlanet) }
+        let today = originDay.adding(days: 99)
+        let result = PhaseProgression.advance(phase: losing, roadmap: before, weights: weights, through: today, settings: s)
+        var record = PlanRecord(roadmap: before, phase: losing, originalRoadmap: nil, declinedEarlyArrivalOn: nil, firstMilestoneReachedOn: start.adding(days: 60))
+        record.apply(result)
+        guard case .maintenanceMode(let arrival) = record.phase else { Issue.record("維持モードではない: \(record.phase)"); return }
+        let rows = RoadmapRows.make(record: record, on: today)
+        for st in rows.stages { #expect(st.status == .arrived(record.roadmap.stages[st.number - 1].estimatedArrival)) }
+        #expect(rows.stages[5].status == .arrived(arrival.day))
+        #expect(rows.target == .init(weight: 67.4, status: .arrived(arrival.day)))
+        #expect(rows.maintenanceMode == arrival.day)
+        #expect(arrival.day != before.stages[5].estimatedArrival)   // 予定日のままではない
     }
 
     @Test("見直し採用後: 元の計画に戻す行(今の予定 → 元の予定)")

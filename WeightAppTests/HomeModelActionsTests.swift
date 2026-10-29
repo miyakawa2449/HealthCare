@@ -97,6 +97,30 @@ struct HomeModelActionsTests {
         #expect(try store.load()?.unreadEvents.isEmpty == true)
     }
 
+    @Test("取り直しの途中でカードを閉じても、遅く終わった取り直しの自動遷移の保存で出来事が復活しない")
+    func dismissDuringRefreshIsKept() async throws {
+        let store = try makeStore()
+        let startDay = today.adding(days: -20)
+        let roadmap = Roadmap(startWeight: 123.5, startDay: startDay, targetWeight: 67.4, settings: s)
+        var record = PlanRecord(roadmap: roadmap, phase: roadmap.initialPhase!, originalRoadmap: nil, declinedEarlyArrivalOn: nil,
+                                firstMilestoneReachedOn: startDay.adding(days: 1))
+        record.appendEvent(.firstMilestoneReached(weight: 117.3, nextBoundary: 111.2), on: startDay.adding(days: 1))
+        try store.save(record)
+        let milestoneEvent = record.unreadEvents[0]
+        // 1回目の取得は 300ms 待つ。体重は境界以下なので、取得が終わるとステージ1の到達を保存する
+        let health = DelayedHealthStore(weights: samples(from: startDay.adding(days: -6), days: 27, 111.0), delays: [.milliseconds(300), .zero, .zero])
+        let model = HomeModel(health: health, planStore: store)
+        let first = Task { await model.refresh() }
+        try await Task.sleep(for: .milliseconds(50))
+        try await model.dismissEvent(milestoneEvent.id)   // 取得の途中で閉じる(こちらの取り直しは先に終わる)
+        await first.value
+        let saved = try #require(try store.load())
+        #expect(!saved.unreadEvents.contains { $0.id == milestoneEvent.id })
+        #expect(saved.unreadEvents.map(\.kind) == [.stageArrived(stage: 1, weight: 111.0)])
+        _ = await model.awaitLatestRefresh()
+        #expect(model.summary?.plan?.record == saved)
+    }
+
     @Test("条件外の操作は notApplicable を投げ、保存は変わらない")
     func notApplicable() async throws {
         let store = try makeStore()

@@ -46,6 +46,8 @@ final class PlanStore: Sendable {
     static let appGroupIdentifier = "group.com.miyakawa.weightapp"
 
     let fileURL: URL
+    /// 読み → 変更 → 書き を1つにまとめるためのロック。builder の自動遷移の保存とカードの操作が重なっても、古い記録で上書きしない。
+    private let lock = NSLock()
 
     init(directory: URL) {
         fileURL = directory.appendingPathComponent("plan.json")
@@ -58,6 +60,27 @@ final class PlanStore: Sendable {
 
     /// 未保存なら nil。スキーマのバージョンが違えば `PlanStoreError`(本体を読む前に判定する)、壊れていれば DecodingError を投げる。
     func load() throws -> PlanRecord? {
+        try lock.withLock { try loadLocked() }
+    }
+
+    func save(_ record: PlanRecord) throws {
+        try lock.withLock { try saveLocked(record) }
+    }
+
+    /// 最新の記録を読み、`body` で変更し、変わっていれば保存する。未保存なら `body` を呼ばず nil。
+    /// 読みから書きまでロックを持つので、別の呼び出しの変更を取りこぼさない。
+    @discardableResult
+    func update(_ body: (inout PlanRecord) throws -> Void) throws -> PlanRecord? {
+        try lock.withLock {
+            guard let loaded = try loadLocked() else { return nil }
+            var record = loaded
+            try body(&record)
+            if record != loaded { try saveLocked(record) }
+            return record
+        }
+    }
+
+    private func loadLocked() throws -> PlanRecord? {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
         let data = try Data(contentsOf: fileURL)
         let header = try JSONDecoder().decode(SchemaHeader.self, from: data)
@@ -72,7 +95,7 @@ final class PlanStore: Sendable {
         var schemaVersion: Int
     }
 
-    func save(_ record: PlanRecord) throws {
+    private func saveLocked(_ record: PlanRecord) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(record).write(to: fileURL, options: .atomic)
