@@ -50,7 +50,8 @@ public struct PlanSettings: Sendable, Equatable, Codable {
     public var actualPaceMinimumWindowDays: Int
     /// 維持中に、7日平均が範囲外に連続してこの日数続いたら一言を出す。
     public var maintenanceNoticeDays: Int
-    /// 早期到達の提案を断った日から、この日数後に再提案する。
+    /// 提案を断った日(早期到達、計画見直し、元の計画に戻した日)や「維持を続ける」を選んだ日から、この日数後に再提案する。
+    /// この型は plan.json に保存されるので、項目を足すと既存のファイルが読めなくなる。用途が同じ日数は1つにまとめる。
     public var earlyArrivalRetryDays: Int
 
     public init(
