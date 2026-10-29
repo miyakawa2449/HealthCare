@@ -65,41 +65,58 @@ struct RoadmapView: View {
 
     // MARK: 行
 
-    /// ステージの行。1行目: 「ステージn」と状態(いまここ / 到達 / 到達予定)、2行目: 開始 → 区切りの体重と、今のステージなら到達予定。
-    /// 「ステージn」と状態は折り返さない(fixedSize)。
+    /// 項目(左)とその日付(右)の組。横に収まらなければ縦に積む(文字サイズが大きいときに左右どちらも折り返さないため)。
+    /// 縦に積んだときも項目と日付が隣り合うので、どの予定かが分かる。
+    private func pair<L: View, R: View>(@ViewBuilder left: () -> L, @ViewBuilder right: () -> R) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                left()
+                Spacer(minLength: 0)
+                right()
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                left()
+                right()
+            }
+        }
+    }
+
+    /// ステージ同士の区切り(維持期間の下、最終ステージの下)。他の線より太くして見分けやすくする。
+    private var stageSeparator: some View {
+        Rectangle().fill(AppTheme.accent.opacity(0.35)).frame(height: 2)
+    }
+
+    /// ステージのブロック。「ステージn」と状態、開始 → 区切りの体重(今のステージなら到達予定つき)、ステージ1なら最初の区切り。
     @ViewBuilder
     private func stageRows(_ stage: RoadmapRows.StageRow) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline) {
+        VStack(alignment: .leading, spacing: 6) {
+            pair {
                 Text("ステージ\(stage.number)")
                     .font(.headline)
                     .foregroundStyle(stage.isCurrent ? AppTheme.accent : .primary)
-                    .fixedSize()
-                Spacer(minLength: 8)
+            } right: {
                 Text(statusText(stage.status))
                     .font(.footnote)
                     .foregroundStyle(stage.isCurrent ? AppTheme.accent : AppTheme.secondaryText)
-                    .fixedSize()
             }
-            HStack(alignment: .firstTextBaseline) {
+            pair {
                 Text("\(DisplayFormat.kilogramsNumber(stage.startWeight)) → \(DisplayFormat.kilograms(stage.boundaryWeight))")
                     .font(.subheadline)
-                Spacer(minLength: 8)
+            } right: {
                 if case .current(let estimated) = stage.status {
                     Text("到達予定 \(DisplayFormat.approximateDate(estimated))")
                         .font(.footnote)
                         .foregroundStyle(AppTheme.secondaryText)
-                        .fixedSize()
                 }
             }
             if let milestone = stage.firstMilestone {
-                HStack(alignment: .firstTextBaseline) {
+                pair {
                     Text("最初の区切り \(DisplayFormat.kilograms(milestone.weight))")
-                    Spacer(minLength: 8)
+                } right: {
                     if let reached = milestone.reachedOn {
-                        Text("届いた \(DisplayFormat.fullDate(reached))").fixedSize()
+                        Text("届いた \(DisplayFormat.fullDate(reached))")
                     } else if let estimated = milestone.estimatedArrival {
-                        Text("到達予定 \(DisplayFormat.approximateDate(estimated))").fixedSize()
+                        Text("到達予定 \(DisplayFormat.approximateDate(estimated))")
                     }
                 }
                 .font(.footnote)
@@ -108,11 +125,11 @@ struct RoadmapView: View {
             }
         }
         .padding(.vertical, 10)
-        Divider()
         if let maintenance = stage.maintenance {
-            maintenanceRow(maintenance)
             Divider()
+            maintenanceRow(maintenance)
         }
+        stageSeparator
     }
 
     private func maintenanceRow(_ status: RoadmapRows.MaintenanceStatus) -> some View {
@@ -127,30 +144,30 @@ struct RoadmapView: View {
     }
 
     private func subRow(label: String, detail: String, current: Bool) -> some View {
-        HStack(alignment: .firstTextBaseline) {
+        pair {
             Text(label)
                 .font(.subheadline)
                 .foregroundStyle(current ? AppTheme.accent : AppTheme.secondaryText)
-                .fixedSize()
-            Spacer(minLength: 8)
+        } right: {
             Text(detail)
                 .font(.footnote)
                 .foregroundStyle(current ? AppTheme.accent : AppTheme.secondaryText)
-                .multilineTextAlignment(.trailing)
         }
         .padding(.vertical, 8)
         .padding(.leading, 12)
     }
 
+    /// 最終目標。見出しと到達予定を1行目に、体重を2行目に(体重が折り返さないように)。
     private var targetRow: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("最終目標").font(.headline).fixedSize()
+        VStack(alignment: .leading, spacing: 6) {
+            pair {
+                Text("最終目標").font(.headline)
+            } right: {
+                Text(statusText(rows.target.status))
+                    .font(.footnote)
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
             Text(DisplayFormat.kilograms(rows.target.weight)).font(.subheadline)
-            Spacer(minLength: 8)
-            Text(statusText(rows.target.status))
-                .font(.footnote)
-                .foregroundStyle(AppTheme.secondaryText)
-                .fixedSize()
         }
         .padding(.vertical, 10)
     }
