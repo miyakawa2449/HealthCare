@@ -114,14 +114,28 @@ final class HomeModel {
         await refresh()
     }
 
-    private var currentCards: [HomeCard] {
+    /// ホームに出すカード(今の summary から選別)。
+    var cards: [HomeCard] {
         guard let summary, let plan = summary.plan else { return [] }
         return HomeCards.cards(for: plan, sevenDayAverage: summary.sevenDayAverage?.kilograms, on: summary.day, settings: settings)
     }
 
     private func requireCard(_ matches: (HomeCard) -> Bool) throws -> DailySummary {
-        guard let summary, currentCards.contains(where: matches) else { throw PlanActionError.notApplicable }
+        guard let summary, cards.contains(where: matches) else { throw PlanActionError.notApplicable }
         return summary
+    }
+
+    /// カードのボタンに対応する操作。
+    func perform(_ action: CardAction) async throws {
+        switch action {
+        case .dismiss(let id): try await dismissEvent(id)
+        case .advanceAfterMaximum: try await advanceAfterMaximum()
+        case .continueMaintenance: try await continueMaintenance()
+        case .adoptEarlyArrival: try await adoptEarlyArrival()
+        case .declineEarlyArrival: try await declineEarlyArrival()
+        case .adoptPlanReview: try await adoptPlanReview()
+        case .declinePlanReview: try await declinePlanReview()
+        }
     }
 
     /// 85日目のカード: 次のステージへ進む。当日の7日平均が要る。

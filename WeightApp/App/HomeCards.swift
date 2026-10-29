@@ -28,6 +28,17 @@ enum HomeCard: Equatable, Identifiable {
     }
 }
 
+/// カードのボタンが呼ぶ操作。
+enum CardAction: Equatable, Sendable {
+    case dismiss(PlanEvent.ID)
+    case advanceAfterMaximum
+    case continueMaintenance
+    case adoptEarlyArrival
+    case declineEarlyArrival
+    case adoptPlanReview
+    case declinePlanReview
+}
+
 /// カードの選別と順序(05-cards/01-design.md 4.)。
 /// 1. 出来事(古い順) 2. 提案は1枚だけ(85日目 > 早期到達 > 計画見直し) 3. 一言(速すぎるペース、維持の一言。85日目のカードがあれば維持の一言は出さない)
 enum HomeCards {
