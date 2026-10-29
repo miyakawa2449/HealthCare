@@ -88,13 +88,16 @@ struct HomeModelSetupTests {
         let health = MockHealthStore(weights: samples(from: today.adding(days: -6), days: 7, 117.3))
         let model = HomeModel(health: health, planStore: store)
         await model.refresh()
-        #expect(try store.load()?.firstMilestoneReachedOn == today)
-        #expect(model.summary?.plan?.firstMilestoneReachedOn == today)
+        // 起点以降で最初に7日平均(丸め)が区切り以下になった日 = 記録が始まった日
+        let reached = today.adding(days: -6)
+        #expect(try store.load()?.firstMilestoneReachedOn == reached)
+        #expect(model.summary?.plan?.firstMilestoneReachedOn == reached)
+        #expect(model.summary?.plan?.record.unreadEvents.map(\.kind) == [.firstMilestoneReached(weight: 117.3, nextBoundary: 111.2)])
 
         // 翌日以降に区切りを上回っても消えない(今日の値で再取得)
         await health.replaceWeights(samples(from: today.adding(days: -6), days: 7, 118.0))
         await model.refresh()
-        #expect(try store.load()?.firstMilestoneReachedOn == today)
+        #expect(try store.load()?.firstMilestoneReachedOn == reached)
     }
 
     @Test("ステージ2では最初の区切りを保存しない")

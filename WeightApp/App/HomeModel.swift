@@ -96,26 +96,82 @@ final class HomeModel {
     private func fetch(with builder: DailySummaryBuilder) async -> Result<DailySummary, any Error> {
         do {
             try await health.requestReadAuthorization()
-            var built = try await builder.build(on: today)
-            if try recordFirstMilestoneIfReached(built) {
-                built = try await builder.build(on: built.day)
-            }
-            return .success(built)
+            // 自動遷移(最初の区切り、到達、卒業)は builder の中で反映して保存する
+            return .success(try await builder.build(on: today))
         } catch {
             return .failure(error)
         }
     }
 
-    /// 減量中のステージ1で、7日平均(丸め)が最初の区切り以下になった日を保存する(到達後は戻らない)。保存したら true。
-    private func recordFirstMilestoneIfReached(_ summary: DailySummary) throws -> Bool {
-        guard let planStore, let plan = summary.plan, plan.firstMilestoneReachedOn == nil,
-              case .losing(let stage, _) = plan.phase, stage == 1,
-              let average = summary.sevenDayAverage,
-              plan.roadmap.hasReachedFirstMilestone(sevenDayAverage: average.kilograms),
-              var record = try planStore.load() else { return false }
-        record.firstMilestoneReachedOn = summary.day
+    // MARK: カードの操作
+
+    /// 保存されている計画を読み、操作を適用して保存し、取り直す。
+    private func mutatePlan(_ body: (inout PlanRecord) throws -> Void) async throws {
+        guard let planStore else { throw PlanActionError.unavailable }
+        guard var record = try planStore.load() else { throw PlanActionError.notApplicable }
+        try body(&record)
         try planStore.save(record)
-        return true
+        await refresh()
+    }
+
+    private var currentCards: [HomeCard] {
+        guard let summary, let plan = summary.plan else { return [] }
+        return HomeCards.cards(for: plan, sevenDayAverage: summary.sevenDayAverage?.kilograms, on: summary.day, settings: settings)
+    }
+
+    private func requireCard(_ matches: (HomeCard) -> Bool) throws -> DailySummary {
+        guard let summary, currentCards.contains(where: matches) else { throw PlanActionError.notApplicable }
+        return summary
+    }
+
+    /// 85日目のカード: 次のステージへ進む。当日の7日平均が要る。
+    func advanceAfterMaximum() async throws {
+        let summary = try requireCard { if case .maintenanceMaximum(canAdvance: true) = $0 { return true } else { return false } }
+        guard let average = summary.sevenDayAverage else { throw PlanActionError.notApplicable }
+        try await mutatePlan { try $0.advanceAfterMaximum(sevenDayAverage: average.kilograms, on: summary.day) }
+    }
+
+    /// 85日目のカード: 維持を続ける。
+    func continueMaintenance() async throws {
+        let summary = try requireCard { if case .maintenanceMaximum = $0 { return true } else { return false } }
+        try await mutatePlan { try $0.continueMaintenance(on: summary.day) }
+    }
+
+    /// 早期到達のカード: 次のステージの到達として扱う。
+    func adoptEarlyArrival() async throws {
+        let summary = try requireCard { if case .earlyArrival = $0 { return true } else { return false } }
+        guard let average = summary.sevenDayAverage else { throw PlanActionError.notApplicable }
+        try await mutatePlan { try $0.adoptEarlyArrival(sevenDayAverage: average.kilograms, on: summary.day) }
+    }
+
+    /// 早期到達のカード: 維持を続ける。
+    func declineEarlyArrival() async throws {
+        let summary = try requireCard { if case .earlyArrival = $0 { return true } else { return false } }
+        try await mutatePlan { try $0.declineEarlyArrival(on: summary.day) }
+    }
+
+    /// 計画見直しのカード: この計画で進める。
+    func adoptPlanReview() async throws {
+        let summary = try requireCard { if case .planReview = $0 { return true } else { return false } }
+        guard let average = summary.sevenDayAverage else { throw PlanActionError.notApplicable }
+        try await mutatePlan { try $0.adoptPlanReview(sevenDayAverage: average.kilograms, on: summary.day) }
+    }
+
+    /// 計画見直しのカード: 元の計画のままにする。
+    func declinePlanReview() async throws {
+        let summary = try requireCard { if case .planReview = $0 { return true } else { return false } }
+        try await mutatePlan { try $0.declinePlanReview(on: summary.day) }
+    }
+
+    /// ロードマップ画面: 元の計画に戻す。
+    func revertToOriginalPlan() async throws {
+        guard let summary, summary.plan?.record.canRevertToOriginalPlan == true else { throw PlanActionError.notApplicable }
+        try await mutatePlan { try $0.revertToOriginalPlan(on: summary.day) }
+    }
+
+    /// 出来事のカードを閉じる。
+    func dismissEvent(_ id: PlanEvent.ID) async throws {
+        try await mutatePlan { $0.dismissEvent(id: id) }
     }
 
     // MARK: 初回設定

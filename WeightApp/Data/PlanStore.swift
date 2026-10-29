@@ -15,6 +15,14 @@ struct PlanRecord: Codable, Equatable {
     /// 最初の区切り(5%)に到達した日。到達後は戻らない。
     /// 項目の追加だけなので schemaVersion は 1 のまま(項目のない JSON は nil として読める)。
     var firstMilestoneReachedOn: CalendarDay?
+    /// 計画見直しを採用したときの、採用前のフェーズ(「元の計画に戻す」用)。originalRoadmap と対で持つ。
+    var originalPhase: PlanPhase?
+    /// 計画見直しの提案を断った日(元の計画に戻した日も含む)。earlyArrivalRetryDays 後に再提案する。
+    var declinedPlanReviewOn: CalendarDay?
+    /// 85日目のカードで「維持を続ける」を選んだ日。earlyArrivalRetryDays 後に再提案する。
+    var continuedMaintenanceOn: CalendarDay?
+    /// まだ閉じていない出来事(古い順)。項目がなければ空として扱う。
+    var events: [PlanEvent]?
 
     init(roadmap: Roadmap, phase: PlanPhase, originalRoadmap: Roadmap?, declinedEarlyArrivalOn: CalendarDay?,
          firstMilestoneReachedOn: CalendarDay? = nil) {
@@ -24,6 +32,8 @@ struct PlanRecord: Codable, Equatable {
         self.declinedEarlyArrivalOn = declinedEarlyArrivalOn
         self.firstMilestoneReachedOn = firstMilestoneReachedOn
     }
+
+    var unreadEvents: [PlanEvent] { events ?? [] }
 }
 
 enum PlanStoreError: Error, Equatable {

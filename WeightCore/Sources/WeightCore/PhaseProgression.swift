@@ -11,6 +11,11 @@ public enum PhaseProgression {
         public var transition: PhaseTransition
         /// この遷移のあとのフェーズ。
         public var phaseAfter: PlanPhase
+
+        public init(transition: PhaseTransition, phaseAfter: PlanPhase) {
+            self.transition = transition
+            self.phaseAfter = phaseAfter
+        }
     }
 
     public struct Result: Sendable, Equatable {
@@ -19,6 +24,12 @@ public enum PhaseProgression {
         public var roadmap: Roadmap
         public var steps: [Step]
         public var transitions: [PhaseTransition] { steps.map(\.transition) }
+
+        public init(phase: PlanPhase, roadmap: Roadmap, steps: [Step]) {
+            self.phase = phase
+            self.roadmap = roadmap
+            self.steps = steps
+        }
     }
 
     /// `phase` から `day` までに起きる遷移を順に適用する。遷移がなければ入力のまま。
