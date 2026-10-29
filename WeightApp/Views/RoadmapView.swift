@@ -110,6 +110,8 @@ struct RoadmapView: View {
                 }
             }
             if let milestone = stage.firstMilestone {
+                // 最初の区切りはステージの中の小さな区切りなので、維持期間と同じ細い線で分ける
+                Divider().padding(.top, 4)
                 pair {
                     Text("最初の区切り \(DisplayFormat.kilograms(milestone.weight))")
                 } right: {
@@ -122,6 +124,7 @@ struct RoadmapView: View {
                 .font(.footnote)
                 .foregroundStyle(AppTheme.secondaryText)
                 .padding(.leading, 12)
+                .padding(.top, 2)
             }
         }
         .padding(.vertical, 10)
