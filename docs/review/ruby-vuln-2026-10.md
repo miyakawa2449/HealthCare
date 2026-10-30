@@ -532,3 +532,168 @@ docker compose --env-file .env.production -p portfolio-prod \
 - GitHub Actionsがすべて成功したか
 
 総合判定は「CI成功、サーバー側作業ツリーがクリーン、事前バックアップあり」を条件に本番反映可能です。
+
+
+---
+
+# 第3回: PR #55 の CI 失敗(bootsnap)と修正 PR #56 の検証(2026-10-30)
+
+`codex exec -s read-only -c model_reasoning_effort=medium -c web_search=live`(portfolio_rb リポジトリ内で実行)。
+
+## 依頼文(Claude Code 作成)
+
+# 検証依頼(第3回): PR #55 の CI 失敗と、その修正 PR #56(bootsnap 1.26.1)
+
+あなたは検証担当(Codex)です。ファイルは書き換えず、検証結果と指摘だけを書いてください。
+リポジトリ ~/development/portfolio_rb。ブランチ fix/bootsnap-ruby-3.4.12(main からの差分)を検証してください。読み取り専用で git diff main...HEAD やファイル閲覧はできます。
+
+## 経緯
+- PR #55(Ruby 3.4.7 → 3.4.12、あなたが第2回で検証したもの)は人間が CI 完了前にマージした。main 上の CI で rspec ジョブだけが失敗(他の lint / scan_ruby / scan_js / Security Audit は成功)。
+- 失敗内容: `require_relative '../config/environment'` の時点で
+  `RuntimeError: should not compile with coverage`
+  at bootsnap-1.19.0/lib/bootsnap/compile_cache/iseq.rb:23 `RubyVM::InstructionSequence#to_binary`
+  (bootsnap の Ruby bug #18250 検出用プローブ。rescue しているのは TypeError だけ)。
+- CI は COVERAGE=true で spec/spec_helper.rb が SimpleCov.start してから Rails を読み込む。Claude Code のローカル初回実行は COVERAGE を付けていなかったため通っていた(検証の穴)。
+- 手元の再現:
+  - `ruby -e 'require "coverage"; Coverage.start(lines: true); RubyVM::InstructionSequence.compile("1").to_binary'` は Ruby 3.4.7 で成功、3.4.12 で RuntimeError。
+  - bootsnap の CHANGELOG: 1.24.4 で「should not compile with coverage」(rails/bootsnap#547、Ruby 4.0.4 文脈)を修正、1.24.6 で Ruby 3.4 のパッチ版での bug #22023 検出を修正、1.26.0 で stdlib でない Coverage 定数の扱いを修正。1.23.0 で最低 Ruby 2.7。1.19.0 で JSON キャッシュ削除、1.24.5 で手動 setup 時に config ファイルを既定で読まなくなった。
+- 修正: `bundle update bootsnap --conservative` で bootsnap 1.19.0 → 1.26.1(msgpack 制約 ~> 1.2 → ~> 1.5、lock の msgpack は 1.8.3 のまま)。Gemfile.lock の PLATFORMS に arm64-darwin-27 も追加してコミットに含めた。
+- 確認: Ruby 3.4.12、COVERAGE=true、CI と同じ暗号化キー環境変数、Postgres 17 で
+  `bin/rails db:test:prepare && bundle exec rspec --no-fail-fast` → 1291 examples, 0 failures, 22 pending、行カバレッジ 92.54%。
+  また `SimpleCov.start` 後に `Bootsnap.setup(...)` を呼ぶ最小スクリプトが 1.26.1 で成功することを確認。
+- PR #56 を作成済み。GitHub Actions は結果待ち。
+
+## 検証してほしいこと
+1. 原因の説明が正しいか。bootsnap 1.19.0 の iseq.rb のプローブと、Ruby 3.4.12 の変更(可能なら ruby/ruby の v3_4_12 に入った該当コミットや NEWS の記述を探す。Web が使えなければ「未確認」)。
+2. bootsnap 1.19.0 → 1.26.1 の変更で、このアプリに影響しうるもの(config/boot.rb は `require "bootsnap/setup"`。config/environments や initializers に bootsnap 設定があるか確認)。特に 1.24.5 の config ファイルの扱いと 1.19.0 の JSON キャッシュ削除。
+3. 本番(Dockerfile.production)への影響。bootsnap precompile のステップがあれば新版で問題ないか。本番は COVERAGE なしなので今回のバグ自体は本番で起きないはずだが、その理解が正しいか。
+4. 検証の穴(COVERAGE を付けずにローカル実行して「成功」と報告した)を今後防ぐ案。CI と同じ環境変数でローカル実行する手順やスクリプトの有無。
+5. 他に、この修正と同時に見るべき点があれば。
+
+## 出力形式
+- 指摘は重要度(高/中/低)、該当ファイルと行、問題の内容、根拠、修正案の順。問題がなければ「問題なし」と明記。
+- 推測で断定せず、確認できないことは「未確認」と書く。
+- 最後に「マージ可否の判定」と「人間に判断してもらう点」をまとめる。
+
+## 差分(main...HEAD)
+```
+diff --git a/Gemfile.lock b/Gemfile.lock
+index f8fbbdd..ed71cac 100644
+--- a/Gemfile.lock
++++ b/Gemfile.lock
+@@ -165,8 +165,8 @@ GEM
+     bindex (0.8.1)
+     binding_of_caller (1.0.1)
+       debug_inspector (>= 1.2.0)
+-    bootsnap (1.19.0)
+-      msgpack (~> 1.2)
++    bootsnap (1.26.1)
++      msgpack (~> 1.5)
+     brakeman (7.1.1)
+       racc
+     builder (3.3.0)
+@@ -725,6 +725,7 @@ PLATFORMS
+   arm-linux-gnu
+   arm-linux-musl
+   arm64-darwin-25
++  arm64-darwin-27
+   x86_64-linux
+   x86_64-linux-gnu
+   x86_64-linux-musl
+```
+
+
+## Codex の回答(原文)
+
+## 指摘
+
+### 1. 重要度: 中
+
+- 該当ファイルと行: [.github/workflows/ci.yml](/Users/tsuyoshi/development/portfolio_rb/.github/workflows/ci.yml:115)、[bin/ci](/Users/tsuyoshi/development/portfolio_rb/bin/ci:3)、[5.7_test_coverage.md](/Users/tsuyoshi/development/portfolio_rb/docs/specifications/features/5.7_test_coverage.md:314)
+- 問題の内容: CI の RSpec 条件をローカルで再現する統一スクリプトがありません。`bin/ci` は RSpec を実行せず、ドキュメントは `COVERAGE=true bundle exec rspec` までで、暗号化キー・Selenium・DB 条件を含みません。今回の検証漏れを再発させる余地があります。
+- 根拠: CI は `RAILS_ENV`、`COVERAGE`、`SELENIUM`、Chrome、`DATABASE_URL`、3つの Active Record Encryption キーを設定していますが、これをまとめて再現する入口がありません。
+- 修正案: 後続PRで `bin/rspec-ci` などを追加し、CI とローカルの双方から同じスクリプトを呼ぶ構成を推奨します。少なくとも次のように、環境変数を両コマンドへ適用してください。
+
+```bash
+export RAILS_ENV=test
+export COVERAGE=true
+export SELENIUM=true
+export DATABASE_URL='postgres://postgres:postgres@localhost:5432'
+export ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY='...'
+export ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY='...'
+export ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT='...'
+
+bin/rails db:test:prepare &&
+  bundle exec rspec --no-fail-fast
+```
+
+Docker Compose 内なら `DATABASE_URL` よりも、既存の test 設定に合わせて `DB_HOST=db` を使う方法もあります。Chrome 関連は system spec を含める場合に追加します。
+
+### 2. 重要度: 低
+
+- 該当ファイルと行: [PR #56 説明](https://github.com/miyakawa2449/cms-ruby/pull/56)、コミット `c156a22`
+- 問題の内容: 「Ruby 3.4.12 で `to_binary` が RuntimeError を出すようになった」という表現は、更新前後の挙動説明としては正しいものの、上流変更が3.4.12で入ったようにも読めます。実際の境界は Ruby 3.4.10 です。
+- 根拠: Ruby Bug #22018 の修正コミットは master の `8bf6d7b...`、3.4バックポートは `469d907...` で、Ruby 3.4.10 のリリース項目に含まれています。この修正により、`RubyVM::InstructionSequence.compile` で生成したISeqもCoverage対象になり、Coverage中の `to_binary` が拒否されるようになりました。[Ruby Bug #22018](https://bugs.ruby-lang.org/issues/22018)、[Ruby 3.4.10 release](https://github.com/ruby/ruby/releases/tag/v3_4_10)
+- 修正案: PR説明を「Ruby 3.4.10でバックポートされた変更を、3.4.7→3.4.12の更新で取り込んだため」にすると正確です。コード修正は不要です。
+
+### 3. 重要度: 低
+
+- 該当ファイルと行: [PR #56 説明の確認コマンド](https://github.com/miyakawa2449/cms-ruby/pull/56)
+- 問題の内容: 記載された `COVERAGE=true bin/rails db:test:prepare && bundle exec rspec ...` を文字どおり実行すると、`COVERAGE=true` は最初の `bin/rails` にしか適用されません。
+- 根拠: POSIX shellの環境変数前置指定は、その直後の単一コマンドだけに適用されます。一方、92.54%のカバレッジ結果が得られたなら、実際の検証時には別途exportされていた可能性が高く、実検証結果自体を否定するものではありません。
+- 修正案: PR本文では `export COVERAGE=true` の後に2コマンドを実行するか、`bin/rails db:test:prepare && COVERAGE=true bundle exec rspec --no-fail-fast` と記載してください。
+
+## 項目別確認
+
+### 原因
+
+原因説明は、上記のバージョン境界を除いて正しいです。
+
+Bootsnap 1.19.0 の `iseq.rb` は、Ruby Bug #18250 の検出用にロード時点で `compile(...).to_binary` を実行し、`TypeError` だけを救済しています。Ruby 3.4.12ではCoverage中にここが `RuntimeError: should not compile with coverage` になるため、Rails環境読み込み前に落ちます。
+
+Bootsnap 1.24.4以降はCoverageの状態を先に判定し、通常コンパイラの場合はISeqキャッシュを使わずRuby側へフォールバックします。Bootsnap側の修正経緯も [PR #549](https://github.com/rails/bootsnap/pull/549) と一致します。
+
+### Bootsnap 1.19.0 → 1.26.1
+
+問題なしです。
+
+- アプリ側は [config/boot.rb](/Users/tsuyoshi/development/portfolio_rb/config/boot.rb:4) の `require "bootsnap/setup"` のみです。
+- `config/environments`、initializer、`config/bootsnap.rb`、`Bootsnap.setup`、`Bootsnap.enable_frozen_string_literal` の独自設定はありません。
+- 1.24.5の変更は「手動で `Bootsnap.setup` を呼ぶ場合、configファイルを暗黙に読まない」というものです。本アプリは `bootsnap/setup` による `default_setup` であり、そもそも `config/bootsnap.rb` がないため影響しません。
+- JSONキャッシュ削除は1.19.0で既に実施済みです。今回の1.19.0→1.26.1で新たに失われる機能ではありません。
+- `msgpack` 実体は1.8.3のままで、新しい `~> 1.5` 制約を満たします。
+- Bootsnap 1.23.0以降の最低Ruby 2.7も、Ruby 3.4.12では問題ありません。
+- `arm64-darwin-27` の追加は開発機プラットフォームの記録で、Linux向け既存プラットフォームを削除しておらず、実害はありません。
+
+### 本番
+
+静的確認上、問題なしです。
+
+[Dockerfile.production](/Users/tsuyoshi/development/portfolio_rb/Dockerfile.production:44) では以下を実行しています。
+
+- `bundle exec bootsnap precompile -j 1 --gemfile`
+- `bundle exec bootsnap precompile -j 1 app/ lib/`
+
+Bootsnap 1.26.1でもこれらのCLIオプションは維持されています。1.26.0にはYAML precompileの破損キャッシュ修正も含まれるため、方向としては改善です。
+
+本番ではSimpleCovを読む `spec/spec_helper.rb` がロードされず、Coverageも開始されません。したがって今回のCoverage起因エラーは通常の本番起動・precompileでは発生しない、という理解で正しいです。なお、読み取り専用条件のためDockerイメージの実ビルドは未実施です。
+
+### その他
+
+- `git diff main...HEAD` は `Gemfile.lock` の5行だけで、意図しない依存更新はありません。
+- `git diff --check` に問題はありません。
+- ワークツリーに未追跡の `reports/2026-09-23/` がありましたが、PR差分には含まれていません。
+- 現時点のPR #56では `scan_ruby`、`scan_js`、`lint` は成功しています。`rspec` はGitHub表示上まだ実行中で、最終結果は未確認です。[PR #56 checks](https://github.com/miyakawa2449/cms-ruby/pull/56/checks)
+
+## マージ可否の判定
+
+**条件付きでマージ可**です。
+
+差分そのものにマージを止める問題は見つかりません。Bootsnap 1.26.1への更新は原因に対する適切な修正です。ただし、今回はまさにRSpec CIの修復なので、**PR #56の `rspec` ジョブ成功を確認してからマージ**してください。
+
+## 人間に判断してもらう点
+
+- PR本文・コミット説明を「3.4.10でバックポート、3.4.12への更新で取り込んだ」に訂正するか。
+- PR本文の `COVERAGE=true` のコマンド表記を修正するか。
+- CI同等のRSpec実行スクリプト追加を、このPRに含めず後続PRで対応するか。
+- `arm64-darwin-27` を開発環境の再現性のため残すか、修正差分を最小化するため外すか。どちらでも機能上の問題はありません。
