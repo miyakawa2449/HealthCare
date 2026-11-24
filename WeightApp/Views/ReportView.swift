@@ -21,6 +21,8 @@ struct ReportScreen: View {
                 }
                 .onAppear { model.markReportOpened(current.id) }
                 .onChange(of: current.id) { _, id in model.markReportOpened(id) }
+                // タブを離れたら選択を戻し、次に開いたときは最新(新しく届いたもの)を出す
+                .onDisappear { selectedID = nil }
             } else {
                 NoReportView(next: summary.nextReport)
             }
@@ -253,8 +255,13 @@ struct ReportView: View {
         }
     }
 
-    @ViewBuilder
+    /// 長い一言が省略されないよう、縦には必要なだけ伸ばす。
     private var planText: some View {
+        planTextBody.fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder
+    private var planTextBody: some View {
         switch report.standing {
         case .losing(_, let guideline, let progress)?:
             if report.weight.endAverage == nil {
@@ -291,6 +298,7 @@ struct ReportView: View {
             case .unavailable:
                 Text(period.kind == .midMonth ? "体組成の変化" : "体組成").font(.headline)
                 Text("体脂肪率の記録が少なく、比べられませんでした。").font(.subheadline)
+                if period.kind == .midMonth { monthEndNotice }
             case .directions(let fat, let lean):
                 Text("体組成の変化").font(.headline)
                 directionRow("体脂肪率", fat)
@@ -298,13 +306,28 @@ struct ReportView: View {
                     Divider()
                     directionRow("除脂肪量", lean)
                 }
-                Text("数値は\(DisplayFormat.dayWithWeekday(monthEndDay))の月末レポートでお届けします。")
-                    .font(.footnote).foregroundStyle(AppTheme.secondaryText)
+                monthEndNotice
             case .values(let v):
                 compositionValues(v)
             }
         }
         .card()
+    }
+
+    /// 月半ばの体組成の添え書き(比べられないときも出す)。
+    private var monthEndNotice: some View {
+        Text("数値は\(DisplayFormat.dayWithWeekday(monthEndDay))の月末レポートでお届けします。")
+            .font(.footnote).foregroundStyle(AppTheme.secondaryText)
+    }
+
+    /// 月末の表の項目名と、その下の変化の方向。
+    private func valueLabel(_ label: String, _ direction: CompositionDirection) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+            Label(ReportWording.direction(direction), systemImage: ReportWording.directionSymbol(direction))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(direction == .flat ? AppTheme.secondaryText : AppTheme.accent)
+        }
     }
 
     private var monthEndDay: CalendarDay {
@@ -335,14 +358,14 @@ struct ReportView: View {
                 Text("\(period.month)月").font(.footnote.bold())
             }
             GridRow {
-                Text("体脂肪率").gridColumnAlignment(.leading)
+                valueLabel("体脂肪率", v.bodyFatPercent.direction).gridColumnAlignment(.leading)
                 Text(String(format: "%.1f %%", v.bodyFatPercent.baseline)).foregroundStyle(AppTheme.secondaryText)
                 Text(String(format: "%.1f %%", v.bodyFatPercent.current)).font(.title3.bold())
             }
             if let lean = v.leanMass {
                 Divider().gridCellUnsizedAxes(.horizontal)
                 GridRow {
-                    Text("除脂肪量").gridColumnAlignment(.leading)
+                    valueLabel("除脂肪量", lean.direction).gridColumnAlignment(.leading)
                     Text(DisplayFormat.kilograms(lean.baseline)).foregroundStyle(AppTheme.secondaryText)
                     Text(DisplayFormat.kilograms(lean.current)).font(.title3.bold())
                 }
