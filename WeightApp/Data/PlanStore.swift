@@ -41,7 +41,7 @@ struct PlanRecord: Codable, Equatable {
     /// フェーズの履歴。保存していなければ開始時と今のフェーズから補完する(ファイルは書き換えない)。
     var timeline: PhaseTimeline {
         if let phaseHistory { return PhaseTimeline(entries: phaseHistory) }
-        return PhaseTimeline.reconstructed(roadmap: roadmap, current: phase)
+        return PhaseTimeline.reconstructed(roadmap: originalRoadmap ?? roadmap, current: phase, original: originalPhase)
     }
 }
 

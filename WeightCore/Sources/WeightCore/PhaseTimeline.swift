@@ -42,10 +42,12 @@ public struct PhaseTimeline: Sendable, Equatable, Codable {
         self.entries = entries.sorted { $0.from < $1.from }
     }
 
-    /// 履歴のない記録の補完: 計画の開始(ステージ1の減量中)と、今のフェーズが違えばその起点の日からの今のフェーズ。
-    public static func reconstructed(roadmap: Roadmap, current: PlanPhase) -> PhaseTimeline {
+    /// 履歴のない記録の補完: 計画の開始(ステージ1の減量中)、見直しを採用中なら元のフェーズ(その起点の日から)、
+    /// 今のフェーズ(その起点の日から)。同じフェーズは重ねない。
+    public static func reconstructed(roadmap: Roadmap, current: PlanPhase, original: PlanPhase? = nil) -> PhaseTimeline {
         let initial = PlanPhase.losing(stage: 1, origin: StageOrigin(weight: roadmap.startWeight, day: roadmap.startDay))
         var timeline = PhaseTimeline(entries: [Entry(from: roadmap.startDay, phase: initial)])
+        if let original { timeline.append(original, from: max(original.origin.day, roadmap.startDay)) }
         timeline.append(current, from: max(current.origin.day, roadmap.startDay))
         return timeline
     }
@@ -75,7 +77,8 @@ public struct PhaseTimeline: Sendable, Equatable, Codable {
             case .maintenanceMode(let arrival):
                 return Change(day: entry.from, kind: .reachedTarget(weight: arrival.weight))
             case .losing(let stage, _):
-                if previous.losingStage == nil { return Change(day: entry.from, kind: .advanced(toStage: stage)) }
+                // 維持から減量へ、または減量中のままステージ番号が変わった(履歴の補完で維持期間が抜けた場合)なら次のステージへ
+                if previous.losingStage != stage { return Change(day: entry.from, kind: .advanced(toStage: stage)) }
                 // 前に従っていたフェーズに戻ったなら「元の計画に戻した」
                 let returned = entries[..<(i - 1)].contains { $0.phase == entry.phase }
                 return Change(day: entry.from, kind: returned ? .planReverted(stage: stage) : .planRebased(stage: stage))

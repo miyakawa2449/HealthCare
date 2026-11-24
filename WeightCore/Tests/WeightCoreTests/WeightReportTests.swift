@@ -45,6 +45,25 @@ struct PhaseTimelineTests {
         #expect(t.entries == [.init(from: start, phase: stage1), .init(from: day(2027, 3, 1), phase: maintaining1)])
     }
 
+    @Test("履歴のない記録の補完: ステージ2の減量中は「次のステージへ進んだ」")
+    func reconstructedStage2() {
+        let roadmap = Roadmap(startWeight: 123.5, startDay: start, targetWeight: 67.4, settings: .default)
+        let stage2 = PlanPhase.losing(stage: 2, origin: StageOrigin(weight: 111.0, day: day(2027, 5, 1)))
+        let t = PhaseTimeline.reconstructed(roadmap: roadmap, current: stage2)
+        #expect(t.changes(from: day(2027, 5, 1), through: day(2027, 5, 15)).map(\.kind) == [.advanced(toStage: 2)])
+    }
+
+    @Test("履歴のない記録の補完: ステージ2で見直しを採用中なら、元のフェーズ → 見直した計画")
+    func reconstructedStage2Rebased() {
+        let roadmap = Roadmap(startWeight: 123.5, startDay: start, targetWeight: 67.4, settings: .default)
+        let original = PlanPhase.losing(stage: 2, origin: StageOrigin(weight: 111.0, day: day(2027, 5, 1)))
+        let rebased = PlanPhase.losing(stage: 2, origin: StageOrigin(weight: 108.0, day: day(2027, 7, 10)))
+        let t = PhaseTimeline.reconstructed(roadmap: roadmap, current: rebased, original: original)
+        #expect(t.entries.map(\.from) == [start, day(2027, 5, 1), day(2027, 7, 10)])
+        #expect(t.changes(from: day(2027, 5, 1), through: day(2027, 7, 31)).map(\.kind) == [.advanced(toStage: 2), .planRebased(stage: 2)])
+        #expect(t.phase(on: day(2027, 6, 30)) == original)
+    }
+
     @Test("期間内の変化を種類に分ける")
     func changes() {
         let rebased = PlanPhase.losing(stage: 1, origin: StageOrigin(weight: 118, day: day(2026, 12, 10)))

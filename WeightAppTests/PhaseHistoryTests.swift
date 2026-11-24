@@ -37,6 +37,15 @@ struct PhaseHistoryTests {
         #expect(maintaining.timeline.entries == [.init(from: start, phase: stage1), .init(from: arrivalDay, phase: maintainingPhase)])
     }
 
+    @Test("履歴なしでステージ1の見直しを採用中なら、開始時 → 見直した計画(元のフェーズは開始時と同じ)")
+    func reconstructedAdopted() throws {
+        var r = losing
+        let adopt = start.adding(days: 50)
+        try r.adoptPlanReview(sevenDayAverage: 120.0, on: adopt)
+        r.phaseHistory = nil   // 履歴のない古い形を再現
+        #expect(r.timeline.entries == [.init(from: start, phase: stage1), .init(from: adopt, phase: r.phase)])
+    }
+
     @Test("自動遷移で到達と卒業が連鎖したら、到達日と卒業日の2項目を足す")
     func progressionAppends() throws {
         var r = losing
