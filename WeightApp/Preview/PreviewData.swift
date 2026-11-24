@@ -186,4 +186,96 @@ enum PreviewData {
             return DailyPoint(day: p.day, weight: byDay[p.day], sevenDayAverage: p.average?.kilograms, guideline: guideline)
         }
     }
+
+    // MARK: レポート
+
+    enum ReportState {
+        case midOnTrack, midAhead, midSlower, midSettlingIn, midNoBodyFat, midFewRecords
+        case endLosing, endFirstMonth, endTooFast, endAhead, endArrivedInPeriod, endMaintenanceMode
+    }
+
+    /// レポート1件。日付は固定で、HealthKit のサンプルと同じ形(`WeightSample`、`BodyFatSample`)から1日の値を決めて作る。
+    nonisolated static func report(_ state: ReportState) -> ReportContent {
+        let cal = AppCalendar.tokyo
+        let settings = PlanSettings.default
+        func d(_ y: Int, _ m: Int, _ day: Int) -> CalendarDay { CalendarDay(year: y, month: m, day: day) }
+
+        /// `first`〜`last` の毎日 08:00。`weight(i, day)` が nil の日は記録なし。
+        func build(start: CalendarDay, startWeight: Double, first: CalendarDay, last: CalendarDay,
+                   weight: (Int, CalendarDay) -> Double?, fat: ((Int) -> Double)?) -> ([DailyWeight], [DailyBodyFat], Roadmap) {
+            let roadmap = Roadmap(startWeight: startWeight, startDay: start, targetWeight: 67.4, settings: settings)
+            var ws: [WeightSample] = []
+            var fs: [BodyFatSample] = []
+            for i in 0...first.days(until: last) {
+                let day = first.adding(days: i)
+                let at = day.startDate(in: cal).addingTimeInterval(8 * 3600)
+                if let kg = weight(i, day) { ws.append(WeightSample(kilograms: kg, measuredAt: at, source: .healthPlanet)) }
+                if let fat { fs.append(BodyFatSample(fraction: fat(i), measuredAt: at, source: .healthPlanet)) }
+            }
+            return (DailyWeightResolver.resolve(ws, calendar: cal), DailyBodyFatResolver.resolve(fs, calendar: cal), roadmap)
+        }
+
+        func wobble(_ i: Int) -> Double { Double((i * 7) % 5) * 0.1 - 0.2 }
+
+        /// ステージ1の計画に対して、目安 × `factor` の体重。`gaps` の日付(日)は欠け。
+        func losing(start: CalendarDay, year: Int, month: Int, kind: ReportPeriod.Kind, factor: Double,
+                    gaps: Set<Int> = [], withFat: Bool = true, only: ClosedRange<Int>? = nil) -> ReportContent {
+            let phase = PlanPhase.losing(stage: 1, origin: StageOrigin(weight: 123.5, day: start))
+            let last = d(year, month, ReportPeriod.lastDayOfMonth(year: year, month: month))
+            let (weights, fats, roadmap) = build(start: start, startWeight: 123.5, first: start.adding(days: -6), last: last, weight: { i, day in
+                if day.month == month, gaps.contains(day.day) { return nil }
+                if let only, day.month == month, !only.contains(day.day) { return nil }
+                return Guideline.expectedWeight(phase: phase, on: day, settings: settings) * factor + wobble(i)
+            }, fat: withFat ? { i in 0.335 - 0.00013 * Double(i) } : nil)
+            let record = PlanRecord(roadmap: roadmap, phase: phase, originalRoadmap: nil, declinedEarlyArrivalOn: nil)
+            let period = ReportPeriod.periods(year: year, month: month, planStart: start, settings: .default).first { $0.kind == kind }!
+            return ReportBuilder.content(period: period, record: record, timeline: record.timeline, weights: weights, bodyFats: fats,
+                                         isLatest: true, settings: .default)
+        }
+
+        switch state {
+        case .midOnTrack: return losing(start: d(2026, 10, 1), year: 2026, month: 11, kind: .midMonth, factor: 1.0, gaps: [5, 11])
+        case .midAhead: return losing(start: d(2026, 10, 1), year: 2026, month: 11, kind: .midMonth, factor: 0.985)
+        case .midSlower: return losing(start: d(2026, 10, 1), year: 2026, month: 11, kind: .midMonth, factor: 1.015, gaps: [3])
+        case .midSettlingIn: return losing(start: d(2026, 11, 1), year: 2026, month: 11, kind: .midMonth, factor: 0.99)
+        case .midNoBodyFat: return losing(start: d(2026, 10, 1), year: 2026, month: 11, kind: .midMonth, factor: 1.0, withFat: false)
+        case .midFewRecords: return losing(start: d(2026, 10, 1), year: 2026, month: 11, kind: .midMonth, factor: 1.0, only: 1...4)
+        case .endLosing: return losing(start: d(2026, 10, 1), year: 2026, month: 11, kind: .monthEnd, factor: 1.0, gaps: [7, 19, 26])
+        case .endFirstMonth: return losing(start: d(2026, 10, 24), year: 2026, month: 10, kind: .monthEnd, factor: 0.995)
+        case .endAhead: return losing(start: d(2026, 10, 1), year: 2026, month: 12, kind: .monthEnd, factor: 0.985)
+        case .endTooFast:
+            let start = d(2026, 10, 1)
+            let phase = PlanPhase.losing(stage: 1, origin: StageOrigin(weight: 123.5, day: start))
+            let (weights, fats, roadmap) = build(start: start, startWeight: 123.5, first: start.adding(days: -6), last: d(2026, 12, 31),
+                                                 // 11月半ばまでは計画どおり、その後は速め(区切り 111.2 には届かない)
+                                                 weight: { i, _ in (i < 52 ? 123.5 - 0.05 * Double(i) : 120.9 - 0.14 * Double(i - 52)) + wobble(i) },
+                                                 fat: { i in 0.335 - 0.0002 * Double(i) })
+            let record = PlanRecord(roadmap: roadmap, phase: phase, originalRoadmap: nil, declinedEarlyArrivalOn: nil,
+                                    firstMilestoneReachedOn: d(2026, 12, 18))
+            let period = ReportPeriod.periods(year: 2026, month: 12, planStart: start, settings: .default).last!
+            return ReportBuilder.content(period: period, record: record, timeline: record.timeline, weights: weights, bodyFats: fats, isLatest: true, settings: .default)
+        case .endArrivedInPeriod, .endMaintenanceMode:
+            let isMode = state == .endMaintenanceMode
+            let start = d(2026, 1, 1)
+            let (year, month, arrivalDay, arrivalWeight) = isMode ? (2029, 3, 5, 67.4) : (2026, 6, 10, 111.2)
+            let arrival = d(year, month, arrivalDay)
+            let last = d(year, month, ReportPeriod.lastDayOfMonth(year: year, month: month))
+            let (weights, fats, roadmap) = build(start: start, startWeight: 123.5, first: d(year, month - 1, 20), last: last, weight: { i, day in
+                (day < arrival ? arrivalWeight + 0.08 * Double(arrival.days(until: day) * -1) : arrivalWeight + 0.3) + wobble(i)
+            }, fat: { i in (isMode ? 0.22 : 0.31) - 0.0001 * Double(i) })
+            let phase: PlanPhase = isMode ? roadmap.phaseOnArrival(stage: 6, sevenDayAverage: arrivalWeight, on: arrival)!
+                                          : roadmap.phaseOnArrival(stage: 1, sevenDayAverage: arrivalWeight, on: arrival)!
+            var record = PlanRecord(roadmap: roadmap.rescheduled(from: phase), phase: phase, originalRoadmap: nil, declinedEarlyArrivalOn: nil,
+                                    firstMilestoneReachedOn: d(2026, 3, 1))
+            if isMode {
+                record.phaseHistory = [.init(from: start, phase: roadmap.initialPhase!),
+                                       .init(from: d(2028, 9, 1), phase: .losing(stage: 6, origin: StageOrigin(weight: 72.8, day: d(2028, 9, 1)))),
+                                       .init(from: arrival, phase: phase)]
+            } else {
+                record.phaseHistory = [.init(from: start, phase: roadmap.initialPhase!), .init(from: arrival, phase: phase)]
+            }
+            let period = ReportPeriod.periods(year: year, month: month, planStart: start, settings: .default).last!
+            return ReportBuilder.content(period: period, record: record, timeline: record.timeline, weights: weights, bodyFats: fats, isLatest: true, settings: .default)
+        }
+    }
 }

@@ -64,4 +64,38 @@ struct PreviewDataSmokeTests {
         let rows = RoadmapRows.make(record: model.summary!.plan!.record, on: model.summary!.day)
         #expect(rows.maintenanceMode != nil)
     }
+
+    // MARK: レポート(06-reports)
+
+    func progress(_ r: ReportContent) -> ProgressJudgment? {
+        if case .losing(_, _, let p)? = r.standing { return p }
+        return nil
+    }
+
+    @Test("レポートの Preview が意図した状態になっている")
+    func reportStates() {
+        #expect(progress(PreviewData.report(.midOnTrack)) == .onTrack)
+        #expect(PreviewData.report(.midOnTrack).continuity.recordedDays == 13)
+        #expect(progress(PreviewData.report(.midAhead)) == .aheadOfSchedule)
+        #expect(progress(PreviewData.report(.midSlower)) == .slowerPace)
+        #expect(progress(PreviewData.report(.midSettlingIn)) == .settlingIn)
+        #expect(PreviewData.report(.midNoBodyFat).composition == .unavailable)
+        #expect(PreviewData.report(.midFewRecords).weight.endAverage == nil)
+        if case .directions = PreviewData.report(.midOnTrack).composition {} else { Issue.record("月半ばが方向でない") }
+
+        let endLosing = PreviewData.report(.endLosing)
+        guard case .values(let v) = endLosing.composition else { Issue.record("月末に数値がない"); return }
+        #expect(v.baselineLabel == .month(10))
+        #expect(v.showsLeanMassNote)
+        #expect(v.showsFatShareNote)
+        guard case .values(let first) = PreviewData.report(.endFirstMonth).composition else { Issue.record("最初の月に数値がない"); return }
+        #expect(first.baselineLabel == .planStart)
+        #expect(PreviewData.report(.endTooFast).paceNote == .tooFast)
+        #expect(PreviewData.report(.endAhead).paceNote == .aheadWithinLimit)
+
+        let arrived = PreviewData.report(.endArrivedInPeriod)
+        #expect(arrived.changes.map(\.kind) == [.arrived(stage: 1, weight: 111.2)])
+        if case .maintaining(1?, _, _, _, .within?)? = arrived.standing {} else { Issue.record("維持期間・範囲内でない: \(String(describing: arrived.standing))") }
+        if case .maintaining(nil, _, _, _, _)? = PreviewData.report(.endMaintenanceMode).standing {} else { Issue.record("維持モードでない") }
+    }
 }

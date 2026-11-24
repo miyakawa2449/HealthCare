@@ -4,10 +4,13 @@ import WeightCore
 /// `HomeModel` を見て `HomeView` に渡す薄い層。
 struct HomeScreen: View {
     let model: HomeModel
+    /// 「次のレポート」カードを押したとき(レポートタブへ移る)。
+    var openReports: () -> Void = {}
 
     var body: some View {
         if let summary = model.summary {
-            HomeView(summary: summary, cards: model.cards, showsRefreshFailure: model.lastRefreshFailed) { action in
+            HomeView(summary: summary, cards: model.cards, showsRefreshFailure: model.lastRefreshFailed,
+                     unreadReport: model.unreadReport, openReports: openReports) { action in
                 do {
                     try await model.perform(action)
                 } catch {
@@ -31,6 +34,9 @@ struct HomeView: View {
     var cards: [HomeCard] = []
     /// 取り直しに失敗して前回の値を出している。
     var showsRefreshFailure = false
+    /// 届いていてまだ開いていないレポート。
+    var unreadReport: ReportContent?
+    var openReports: () -> Void = {}
     /// カードのボタンの操作。
     var perform: (CardAction) async -> Void = { _ in }
 
@@ -46,6 +52,9 @@ struct HomeView: View {
                     StageCard(plan: plan, sevenDayAverage: summary.sevenDayAverage?.kilograms, day: summary.day)
                 }
                 WeekRecordCard(day: summary.day, history: summary.history)
+                if unreadReport != nil || summary.nextReport != nil {
+                    NextReportCard(unread: unreadReport, next: summary.nextReport, open: openReports)
+                }
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 24)

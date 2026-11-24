@@ -23,37 +23,26 @@ struct RootView: View {
     }
 }
 
-/// ホーム / ロードマップ / レポートのタブ。レポートの中身はフェーズ6。
+/// ホーム / ロードマップ / レポートのタブ。
 struct MainTabView: View {
+    enum Selection: Hashable { case home, roadmap, reports }
+
     let model: HomeModel
+    @State private var selection: Selection = .home
 
     var body: some View {
-        TabView {
-            Tab("ホーム", systemImage: "house") {
-                HomeScreen(model: model)
+        TabView(selection: $selection) {
+            Tab("ホーム", systemImage: "house", value: .home) {
+                HomeScreen(model: model) { selection = .reports }
             }
-            Tab("ロードマップ", systemImage: "point.topleft.down.to.point.bottomright.curvepath") {
+            Tab("ロードマップ", systemImage: "point.topleft.down.to.point.bottomright.curvepath", value: .roadmap) {
                 RoadmapScreen(model: model)
             }
-            Tab("レポート", systemImage: "doc.text") {
-                PlaceholderView(text: "レポートは次の段階で作ります。")
+            Tab("レポート", systemImage: "doc.text", value: .reports) {
+                ReportScreen(model: model)
             }
         }
         .tint(AppTheme.accent)
-    }
-}
-
-/// まだ作っていない画面の仮置き。
-struct PlaceholderView: View {
-    let text: String
-
-    var body: some View {
-        ZStack {
-            AppTheme.background.ignoresSafeArea()
-            Text(text)
-                .foregroundStyle(AppTheme.secondaryText)
-                .padding()
-        }
     }
 }
 
@@ -94,10 +83,6 @@ struct UnavailableView: View {
 
 #Preview("最初の読み取りに失敗") {
     UnavailableView(kind: .firstReadFailed)
-}
-
-#Preview("タブ(ロードマップの仮の画面)") {
-    PlaceholderView(text: "ロードマップは次の段階で作ります。")
 }
 
 #Preview("起動の振り分け: 読み込み中") {
