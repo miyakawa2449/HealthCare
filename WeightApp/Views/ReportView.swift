@@ -82,7 +82,8 @@ struct ReportView: View {
                     compositionCard
                     midStageCard
                 case .monthEnd:
-                    monthEndSummaryCard
+                    continuityCard
+                    weightFlowCard
                     compositionCard
                     monthEndStageCard
                     paceCard
@@ -154,7 +155,7 @@ struct ReportView: View {
         .card()
     }
 
-    // MARK: 体重(月半ば)
+    // MARK: 体重の流れ(月半ば・月末で共通)
 
     private var weightFlowCard: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -168,55 +169,17 @@ struct ReportView: View {
                     Text(DisplayFormat.kilogramsNumber(end)).font(.system(size: 34, weight: .bold, design: .rounded))
                     Text("kg").foregroundStyle(AppTheme.secondaryText)
                 }
-            }
-            planBox(guidelineLabel: "\(period.lastDay.day)日の目安", showsActual: true)
-            planText
-            changesList
-        }
-        .card()
-    }
-
-    // MARK: 記録と体重(月末)
-
-    private var monthEndSummaryCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top) {
-                    continuityCount
-                    Spacer()
-                    monthEndWeight
-                }
-                VStack(alignment: .leading, spacing: 12) {
-                    continuityCount
-                    monthEndWeight
-                }
-            }
-            continuityMarks
-            Text(ReportWording.continuity(report.continuity, period: period)).font(.subheadline)
-                .fixedSize(horizontal: false, vertical: true)
-            planBox(guidelineLabel: "月末の目安", showsActual: false)
-            planText
-            changesList
-        }
-        .card()
-    }
-
-    private var monthEndWeight: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("体重(7日平均)").font(.subheadline).foregroundStyle(AppTheme.secondaryText)
-            if let end = report.weight.endAverage {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(DisplayFormat.kilogramsNumber(end)).font(.system(size: 40, weight: .bold, design: .rounded))
-                    Text("kg").foregroundStyle(AppTheme.secondaryText)
-                }
+                // 何と比べたか(前の月の末日 / 開始時)と差
                 if let base = report.weight.baseline, let change = report.weight.change {
                     Text("\(baselineName(base)) \(DisplayFormat.kilograms(base.weight)) から \(ReportWording.signedKilograms(change))")
                         .font(.footnote).foregroundStyle(AppTheme.secondaryText)
                 }
-            } else {
-                Text("—").font(.title)
             }
+            planBox(guidelineLabel: "\(period.lastDay.day)日の目安")
+            planText
+            changesList
         }
+        .card()
     }
 
     private func baselineName(_ base: WeightFlow.Baseline) -> String {
@@ -230,12 +193,12 @@ struct ReportView: View {
 
     /// 目安と実際、または維持の範囲。最初の1か月と7日平均が出ないときは出さない。
     @ViewBuilder
-    private func planBox(guidelineLabel: String, showsActual: Bool) -> some View {
+    private func planBox(guidelineLabel: String) -> some View {
         switch report.standing {
         case .losing(_, let guideline, let progress)? where progress != nil && progress != .settlingIn:
             HStack(alignment: .firstTextBaseline, spacing: 24) {
                 labeled(guidelineLabel, "\(DisplayFormat.kilograms(guideline)) 前後")
-                if showsActual, let end = report.weight.endAverage {
+                if let end = report.weight.endAverage {
                     labeled("実際", DisplayFormat.kilograms(end))
                 }
             }
