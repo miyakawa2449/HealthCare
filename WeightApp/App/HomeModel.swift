@@ -23,10 +23,15 @@ final class HomeModel {
     private let planStore: PlanStore?
     private let calendar = AppCalendar.tokyo
     private let settings = PlanSettings.default
+    private let reportReads: ReportReadStore
+    /// 最後に開いたレポートの ID(「届きました」の判定用)。
+    private(set) var lastOpenedReportID: String?
 
-    init(health: any HealthStore, planStore: PlanStore?, healthAvailable: Bool = true) {
+    init(health: any HealthStore, planStore: PlanStore?, healthAvailable: Bool = true, reportReads: ReportReadStore = ReportReadStore()) {
         self.health = health
         self.planStore = planStore
+        self.reportReads = reportReads
+        lastOpenedReportID = reportReads.lastOpenedID
         if let planStore, healthAvailable {
             builder = DailySummaryBuilder(health: health, planStore: planStore, calendar: AppCalendar.tokyo, settings: .default)
         } else {
@@ -241,5 +246,22 @@ final class HomeModel {
         // 自分の取り直しが別の取り直しに置き換えられても、最新の結果が出るまで待ってから判断する
         await refresh()
         if await awaitLatestRefresh() != .succeeded || summary?.plan == nil { throw StartPlanError.savedButRefreshFailed }
+    }
+
+    // MARK: レポート
+
+    /// 公開済みの最新のレポートをまだ開いていなければ、そのレポート。
+    var unreadReport: ReportContent? {
+        guard let latest = summary?.reports.last, latest.id != lastOpenedReportID else { return nil }
+        return latest
+    }
+
+    /// レポートを開いた。今の既読より新しいときだけ既読を進める(古いレポートを開いても最新が未読に戻らないように)。
+    func markReportOpened(_ id: String) {
+        let ids = summary?.reports.map(\.id) ?? []
+        guard let opened = ids.firstIndex(of: id) else { return }
+        if let current = lastOpenedReportID, let currentIndex = ids.firstIndex(of: current), currentIndex >= opened { return }
+        lastOpenedReportID = id
+        reportReads.lastOpenedID = id
     }
 }

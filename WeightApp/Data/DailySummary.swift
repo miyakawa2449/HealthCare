@@ -13,6 +13,10 @@ struct DailySummary: Equatable {
     var history: [DailyPoint]
     /// 取得した範囲にある1日の体重すべて(古い順)。計画がなければ HealthKit の全履歴。初回設定の開始日の範囲と開始体重の初期値に使う。
     var recordedWeights: [DailyWeight]
+    /// 公開済みのレポート(古い順)。計画がなければ空。
+    var reports: [ReportContent] = []
+    /// 次に届くレポートの期間。計画がなければ nil。
+    var nextReport: ReportPeriod? = nil
 }
 
 /// 履歴の1日分。グラフ(7日平均の実線、計画の点線)と記録カレンダーが使う。
@@ -106,6 +110,9 @@ struct DailySummaryBuilder: Sendable {
         )
         if let record {
             summary.plan = planStatus(record: record, on: day, weights: weights, average: average)
+            summary.reports = ReportBuilder.reports(record: record, weights: weights.filter { $0.day <= day },
+                                                    bodyFats: bodyFats.filter { $0.day <= day }, today: day)
+            summary.nextReport = ReportBuilder.nextPeriod(record: record, today: day)
         }
         return summary
     }
