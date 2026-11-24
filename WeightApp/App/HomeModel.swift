@@ -235,7 +235,9 @@ final class HomeModel {
         guard try planStore.load() == nil else { throw StartPlanError.alreadyStarted }
         let roadmap = Roadmap(startWeight: startWeight, startDay: startDay, targetWeight: targetWeight, settings: settings)
         guard let phase = roadmap.initialPhase else { throw StartPlanError.invalid(.targetNotBelowStart) }
-        try planStore.save(PlanRecord(roadmap: roadmap, phase: phase, originalRoadmap: nil, declinedEarlyArrivalOn: nil))
+        var record = PlanRecord(roadmap: roadmap, phase: phase, originalRoadmap: nil, declinedEarlyArrivalOn: nil)
+        record.phaseHistory = [PhaseTimeline.Entry(from: startDay, phase: phase)]
+        try planStore.save(record)
         // 自分の取り直しが別の取り直しに置き換えられても、最新の結果が出るまで待ってから判断する
         await refresh()
         if await awaitLatestRefresh() != .succeeded || summary?.plan == nil { throw StartPlanError.savedButRefreshFailed }

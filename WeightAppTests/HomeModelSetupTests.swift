@@ -32,6 +32,17 @@ struct HomeModelSetupTests {
         #expect(model.hasRefreshed)
     }
 
+    @Test("初回設定で作った計画は、開始日からのステージ1だけの履歴を持つ(06-reports)")
+    func setupSavesPhaseHistory() async throws {
+        let store = try makeStore()
+        let model = HomeModel(health: MockHealthStore(weights: samples(from: today.adding(days: -2), days: 3, 123.5)), planStore: store)
+        await model.refresh()
+        let startDay = today.adding(days: -1)
+        try await model.startPlan(startWeight: 123.5, targetWeight: 67.4, startDay: startDay)
+        let record = try #require(try store.load())
+        #expect(record.phaseHistory == [PhaseTimeline.Entry(from: startDay, phase: record.phase)])
+    }
+
     @Test("直近7日に記録があれば7日平均が初期値")
     func suggestionAverage() async throws {
         let model = HomeModel(health: MockHealthStore(weights: samples(from: today.adding(days: -2), days: 3, 123.5)), planStore: try makeStore())

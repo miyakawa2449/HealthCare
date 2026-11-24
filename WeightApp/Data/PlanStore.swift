@@ -23,6 +23,9 @@ struct PlanRecord: Codable, Equatable {
     var continuedMaintenanceOn: CalendarDay?
     /// まだ閉じていない出来事(古い順)。項目がなければ空として扱う。
     var events: [PlanEvent]?
+    /// フェーズの履歴(古い順。過去のレポートを当時のフェーズで出すため。06-reports/01-design.md 4.)。
+    /// 項目のない JSON は nil として読み、`timeline` で開始時と今のフェーズから補完する。
+    var phaseHistory: [PhaseTimeline.Entry]?
 
     init(roadmap: Roadmap, phase: PlanPhase, originalRoadmap: Roadmap?, declinedEarlyArrivalOn: CalendarDay?,
          firstMilestoneReachedOn: CalendarDay? = nil) {
@@ -34,6 +37,12 @@ struct PlanRecord: Codable, Equatable {
     }
 
     var unreadEvents: [PlanEvent] { events ?? [] }
+
+    /// フェーズの履歴。保存していなければ開始時と今のフェーズから補完する(ファイルは書き換えない)。
+    var timeline: PhaseTimeline {
+        if let phaseHistory { return PhaseTimeline(entries: phaseHistory) }
+        return PhaseTimeline.reconstructed(roadmap: roadmap, current: phase)
+    }
 }
 
 enum PlanStoreError: Error, Equatable {

@@ -15,7 +15,12 @@ extension PlanRecord {
     /// `PhaseProgression` の結果を反映し、遷移ごとに出来事を足す。
     mutating func apply(_ progression: PhaseProgression.Result) {
         var current = phase
+        var history = timeline
         for step in progression.steps {
+            switch step.transition {
+            case .arrived(_, let on, _), .graduated(_, let on, _):
+                history.append(step.phaseAfter, from: on)
+            }
             switch step.transition {
             case .arrived(let stage, let on, let average):
                 if case .maintenanceMode = step.phaseAfter {
@@ -34,6 +39,15 @@ extension PlanRecord {
         }
         phase = progression.phase
         roadmap = progression.roadmap
+        if !progression.steps.isEmpty { phaseHistory = history.entries }
+    }
+
+    /// `day` から `next` のフェーズに変える(履歴にも足す)。履歴は変える前のフェーズで補完してから足す。
+    private mutating func changePhase(to next: PlanPhase, on day: CalendarDay) {
+        var history = timeline
+        history.append(next, from: day)
+        phaseHistory = history.entries
+        phase = next
     }
 
     /// 最初の区切りに届いた日を記録し、出来事を足す。
@@ -57,7 +71,7 @@ extension PlanRecord {
     mutating func advanceAfterMaximum(sevenDayAverage: Double, on day: CalendarDay) throws {
         guard case .maintaining(let stage, let arrival) = phase,
               let next = roadmap.phaseOnAdvance(from: phase, sevenDayAverage: sevenDayAverage, on: day) else { throw PlanActionError.notApplicable }
-        phase = next
+        changePhase(to: next, on: day)
         roadmap = roadmap.rescheduled(from: next)
         continuedMaintenanceOn = nil
         if case .losing(let toStage, _) = next {
@@ -79,7 +93,7 @@ extension PlanRecord {
     mutating func adoptEarlyArrival(sevenDayAverage: Double, on day: CalendarDay) throws {
         guard let nextStage = roadmap.earlyArrival(phase: phase, sevenDayAverage: sevenDayAverage),
               let next = roadmap.phaseOnEarlyArrival(from: phase, sevenDayAverage: sevenDayAverage, on: day) else { throw PlanActionError.notApplicable }
-        phase = next
+        changePhase(to: next, on: day)
         roadmap = roadmap.rescheduled(from: next)
         declinedEarlyArrivalOn = nil
         let weight = Weight.rounded(sevenDayAverage)
@@ -105,7 +119,7 @@ extension PlanRecord {
             originalRoadmap = roadmap
             originalPhase = phase
         }
-        phase = rebased
+        changePhase(to: rebased, on: day)
         roadmap = roadmap.rescheduled(from: rebased)
         declinedPlanReviewOn = nil
     }
@@ -126,7 +140,7 @@ extension PlanRecord {
     mutating func revertToOriginalPlan(on day: CalendarDay) throws {
         guard canRevertToOriginalPlan, let originalRoadmap, let originalPhase else { throw PlanActionError.notApplicable }
         roadmap = originalRoadmap
-        phase = originalPhase
+        changePhase(to: originalPhase, on: day)
         self.originalRoadmap = nil
         self.originalPhase = nil
         declinedPlanReviewOn = day
